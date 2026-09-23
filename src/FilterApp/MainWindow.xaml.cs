@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using FilterApp.Core;
 using FilterApp.Intake;
+using FilterApp.Interop;
 
 namespace FilterApp;
 
@@ -13,6 +14,7 @@ public partial class MainWindow : Window
     readonly Board _board;
     readonly DispatcherTimer _saveTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
     readonly DispatcherTimer _toastTimer = new() { Interval = TimeSpan.FromSeconds(4) };
+    readonly FolderWatcher _watcher = new();
     Point _dragStart;
     PendingItem? _dragItem;
 
@@ -21,12 +23,13 @@ public partial class MainWindow : Window
         InitializeComponent();
         _board = board;
         DataContext = board;
+        _watcher.FolderActivated += _board.OnExplorerFolder;
 
         board.Changed += () => { _saveTimer.Stop(); _saveTimer.Start(); };
         board.Notified += ShowToast;
         _saveTimer.Tick += (_, _) => { _saveTimer.Stop(); Save(); };
         _toastTimer.Tick += (_, _) => { _toastTimer.Stop(); Toast.Visibility = Visibility.Collapsed; };
-        Closing += (_, _) => Save();
+        Closing += (_, _) => { _watcher.Dispose(); Save(); };
     }
 
     void Save()

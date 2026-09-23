@@ -1,8 +1,10 @@
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
 using FilterApp.Core;
+using FilterApp.Intake;
 
 namespace FilterApp;
 
@@ -44,11 +46,39 @@ public partial class MainWindow : Window
         _toastTimer.Start();
     }
 
-    // ---- Paste and external drops into the tray (filled in Task 6) ----
+    // ---- Paste and external drops into the tray ----
 
-    void OnPreviewKeyDown(object sender, KeyEventArgs e) { }
-    void OnWindowDragOver(object sender, DragEventArgs e) { e.Effects = DragDropEffects.None; e.Handled = true; }
-    void OnWindowDrop(object sender, DragEventArgs e) { e.Handled = true; }
+    void OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.V || Keyboard.Modifiers != ModifierKeys.Control) return;
+        e.Handled = true;
+        IDataObject? data = null;
+        try { data = Clipboard.GetDataObject(); }
+        catch (COMException) { }   // clipboard temporarily locked by another app
+        if (data is null || !FileIntake.CanAccept(data)) ShowToast("El portapapeles no contiene archivos.");
+        else AddToPending(data);
+    }
+
+    void OnWindowDragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = FileIntake.CanAccept(e.Data) ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    void OnWindowDrop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        if (FileIntake.CanAccept(e.Data)) AddToPending(e.Data);
+    }
+
+    List<PendingItem> ReadIntake(IDataObject data)
+    {
+        var result = FileIntake.Read(data);
+        if (result.RejectedFolders > 0) ShowToast("Las carpetas no se admiten; solo archivos.");
+        return result.Items;
+    }
+
+    void AddToPending(IDataObject data) => _board.AddPending(ReadIntake(data));
 
     // ---- Dragging a pending item to a card ----
 
@@ -79,7 +109,8 @@ public partial class MainWindow : Window
     static CardViewModel? CardOf(object sender) => (sender as FrameworkElement)?.DataContext as CardViewModel;
 
     static bool CanDropOn(CardViewModel? card, DragEventArgs e) =>
-        card is { Status: CardStatus.Free } && e.Data.GetDataPresent(typeof(PendingItem));
+        card is { Status: CardStatus.Free } &&
+        (e.Data.GetDataPresent(typeof(PendingItem)) || FileIntake.CanAccept(e.Data));
 
     void OnCardDragOver(object sender, DragEventArgs e)
     {
@@ -100,8 +131,22 @@ public partial class MainWindow : Window
         e.Handled = true;
         if (CardOf(sender) is not { } card) return;
         card.IsDragTarget = false;
+
         if (e.Data.GetData(typeof(PendingItem)) is PendingItem item)
+        {
             await _board.AssignAsync(item, card);
+            return;
+        }
+        if (!FileIntake.CanAccept(e.Data)) return;
+
+        var items = ReadIntake(e.Data);
+        if (items.Count == 1)
+            await _board.AssignAsync(items[0], card);
+        else if (items.Count > 1)
+        {
+            _board.AddPending(items);
+            ShowToast("Varios archivos: quedaron en Pendientes para repartirlos.");
+        }
     }
 
     void OnCardAction(object sender, RoutedEventArgs e)

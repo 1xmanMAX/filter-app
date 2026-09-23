@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/FilterApp.Core/FilterApp.Core.csproj" />
+    <Project Path="src/FilterApp/FilterApp.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FilterApp.Core.Tests/FilterApp.Core.Tests.csproj" />

@@ -14,6 +14,7 @@ public sealed class AppState
     public List<CardData> Cards { get; set; } = [];
     public string? Destination { get; set; }
     public bool Locked { get; set; }
+    public bool Holding { get; set; }
 }
 
 public static class StateStore

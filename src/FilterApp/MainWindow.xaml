@@ -17,15 +17,45 @@
     <Border Background="White" BorderBrush="#E1E4E8" BorderThickness="0,0,0,1" Padding="16,10">
       <DockPanel>
         <ToggleButton DockPanel.Dock="Left" Style="{StaticResource LockToggle}" IsChecked="{Binding Locked}"
+                      Margin="0,0,8,0" VerticalAlignment="Center"/>
+        <ToggleButton DockPanel.Dock="Left" Style="{StaticResource HoldToggle}" IsChecked="{Binding Holding}"
                       Margin="0,0,12,0" VerticalAlignment="Center"/>
         <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Foreground="#57606A">
           <Run Text="Pendientes: "/><Run Text="{Binding Pending.Count, Mode=OneWay}" FontWeight="SemiBold"/>
         </TextBlock>
+        <Button DockPanel.Dock="Right" Margin="0,0,16,0" VerticalAlignment="Center" Click="OnRelease"
+                IsEnabled="{Binding CanRelease}" ToolTip="Copia todos los archivos en espera a la carpeta de destino">
+          <Button.Style>
+            <Style TargetType="Button" BasedOn="{StaticResource AccentButton}">
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding HeldCount}" Value="0">
+                  <Setter Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+                <Trigger Property="IsEnabled" Value="False">
+                  <Setter Property="Opacity" Value="0.45"/>
+                </Trigger>
+              </Style.Triggers>
+            </Style>
+          </Button.Style>
+          <TextBlock>
+            <Run Text="Soltar todo aquí ("/><Run Text="{Binding HeldCount, Mode=OneWay}"/><Run Text=")"/>
+          </TextBlock>
+        </Button>
         <StackPanel VerticalAlignment="Center">
           <TextBlock Text="DESTINO" FontSize="11" FontWeight="SemiBold" Foreground="#57606A"/>
-          <TextBlock Text="{Binding Destination, TargetNullValue='Haz clic en una carpeta del Explorador'}"
-                     FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
-                     ToolTip="{Binding Destination}"/>
+          <TextBlock FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Destination}">
+            <TextBlock.Style>
+              <Style TargetType="TextBlock">
+                <Setter Property="Text" Value="{Binding Destination, TargetNullValue='Haz clic en una carpeta del Explorador'}"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding DestinationMissing}" Value="True">
+                    <Setter Property="Text" Value="{Binding Destination, StringFormat='{}{0}  (no existe)'}"/>
+                    <Setter Property="Foreground" Value="#CF222E"/>
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </TextBlock.Style>
+          </TextBlock>
         </StackPanel>
       </DockPanel>
     </Border>
@@ -122,6 +152,15 @@
                     <Setter TargetName="Sub" Property="ToolTip" Value="{Binding DestPath}"/>
                     <Setter TargetName="Action" Property="Content" Value="&#xE711;"/>
                     <Setter TargetName="Action" Property="ToolTip" Value="Deshacer: borra la copia y libera la tarjeta"/>
+                  </DataTrigger>
+                  <DataTrigger Binding="{Binding Status}" Value="Held">
+                    <Setter TargetName="Card" Property="Background" Value="#FBEFFF"/>
+                    <Setter TargetName="Card" Property="BorderBrush" Value="#8250DF"/>
+                    <Setter TargetName="Sub" Property="Text" Value="{Binding HeldItem.DisplayName, StringFormat='⏸ {0}'}"/>
+                    <Setter TargetName="Sub" Property="Foreground" Value="#8250DF"/>
+                    <Setter TargetName="Sub" Property="ToolTip" Value="{Binding HeldItem.SourcePath}"/>
+                    <Setter TargetName="Action" Property="Content" Value="&#xE711;"/>
+                    <Setter TargetName="Action" Property="ToolTip" Value="Devolver a Pendientes"/>
                   </DataTrigger>
                   <DataTrigger Binding="{Binding IsDragTarget}" Value="True">
                     <Setter TargetName="Card" Property="Background" Value="#DDF4FF"/>

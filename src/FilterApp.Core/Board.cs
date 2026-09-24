@@ -5,8 +5,12 @@ namespace FilterApp.Core;
 /// Main view-model: cards, pending tray, destination and the assign/undo rules.
 public sealed class Board : Observable
 {
+    const string NoDestination = "Haz clic en una carpeta del Explorador para elegir el destino.";
+
     string? _destination;
     bool _locked;
+    bool _holding;
+    bool _releasing;
 
     public ObservableCollection<CardViewModel> Cards { get; } = [];
     public ObservableCollection<PendingItem> Pending { get; } = [];
@@ -19,7 +23,14 @@ public sealed class Board : Observable
     public string? Destination
     {
         get => _destination;
-        set { if (Set(ref _destination, value)) Changed?.Invoke(); }
+        set
+        {
+            if (!Set(ref _destination, value)) return;
+            // A copy in progress owns its .partial file; leftovers can only be cleaned when idle.
+            if (value is not null && !IsCopying) Copier.CleanPartials(value);
+            RefreshDestination();
+            Changed?.Invoke();
+        }
     }
 
     public bool Locked
@@ -28,7 +39,27 @@ public sealed class Board : Observable
         set { if (Set(ref _locked, value)) Changed?.Invoke(); }
     }
 
+    /// Hold mode: files dropped on cards wait there until <see cref="ReleaseAsync"/>.
+    public bool Holding
+    {
+        get => _holding;
+        set { if (Set(ref _holding, value)) Changed?.Invoke(); }
+    }
+
+    public bool DestinationExists => Destination is not null && Directory.Exists(Destination);
+    /// A destination was chosen but the folder is gone (deleted, renamed, drive unplugged).
+    public bool DestinationMissing => Destination is not null && !DestinationExists;
+    public int HeldCount => Cards.Count(c => c.Status == CardStatus.Held);
+    public bool CanRelease => !_releasing && HeldCount > 0 && DestinationExists;
     public bool IsCopying => Cards.Any(c => c.Status == CardStatus.Copying);
+
+    /// Re-checks the destination folder (it may have been deleted or renamed outside the app).
+    public void RefreshDestination()
+    {
+        Notify(nameof(DestinationExists));
+        Notify(nameof(DestinationMissing));
+        Notify(nameof(CanRelease));
+    }
 
     public int AddNames(string text)
     {
@@ -41,8 +72,7 @@ public sealed class Board : Observable
     public void AddPending(IEnumerable<PendingItem> items)
     {
         foreach (var item in items)
-            if (!Pending.Any(p => string.Equals(p.SourcePath, item.SourcePath, StringComparison.OrdinalIgnoreCase)))
-                Pending.Add(item);
+            if (!IsPending(item)) Pending.Add(item);
     }
 
     public void RemovePending(PendingItem item)
@@ -59,39 +89,77 @@ public sealed class Board : Observable
     {
         if (card.Status != CardStatus.Free)
             return Fail(item, $"«{card.Name}» ya tiene un archivo.");
-        var dest = Destination;
-        if (dest is null || !Directory.Exists(dest))
-            return Fail(item, "Haz clic en una carpeta del Explorador para elegir el destino.");
-
-        card.Status = CardStatus.Copying;
-        Pending.Remove(item);
-        try
+        if (Holding)
         {
-            var path = await Copier.CopyAsync(item.SourcePath, dest, card.Name);
-            card.Fill(path, item.DisplayName);
-            if (item.IsTemp) TryDelete(item.SourcePath);
-            Changed?.Invoke();
+            Pending.Remove(item);
+            card.Hold(item);
+            HeldChanged();
             return true;
         }
-        catch (Exception e)
+        var dest = Destination;
+        if (dest is null || !Directory.Exists(dest)) return Fail(item, NoDestination);
+
+        Pending.Remove(item);
+        return await CopyToCardAsync(item, card, dest);
+    }
+
+    /// Copies every held file into the current destination. Returns how many were copied.
+    public async Task<int> ReleaseAsync()
+    {
+        if (_releasing || HeldCount == 0) return 0;
+        var dest = Destination;
+        if (dest is null || !Directory.Exists(dest))
         {
-            // Any failure, expected or not, must leave the card usable and the file in the tray.
-            card.Status = CardStatus.Free;
-            return Fail(item, $"No se pudo copiar «{item.DisplayName}»: {e.Message}");
+            Notified?.Invoke(NoDestination);
+            return 0;
         }
+
+        _releasing = true;
+        HeldChanged();
+        int copied = 0;
+        try
+        {
+            foreach (var card in Cards.Where(c => c.Status == CardStatus.Held).ToList())
+            {
+                // The user may have sent it back to the tray while earlier files were copying.
+                if (card.Status != CardStatus.Held || card.HeldItem is not { } item) continue;
+                if (await CopyToCardAsync(item, card, dest)) copied++;
+            }
+        }
+        finally
+        {
+            _releasing = false;
+            HeldChanged();
+        }
+        return copied;
+    }
+
+    public void ReturnHeld(CardViewModel card)
+    {
+        if (card.Status != CardStatus.Held || card.HeldItem is not { } item) return;
+        card.Clear();
+        AddPending([item]);
+        HeldChanged();
     }
 
     public void Undo(CardViewModel card)
     {
         if (card.Status != CardStatus.Filled) return;
-        try
+        // Two cards can end up pointing at the same file (the user deleted the first copy by hand and
+        // a card with the same name reused the name); that file belongs to the other card now.
+        bool shared = Cards.Any(c => c != card && c.Status == CardStatus.Filled &&
+                                     string.Equals(c.DestPath, card.DestPath, StringComparison.OrdinalIgnoreCase));
+        if (!shared)
         {
-            Copier.Undo(card.DestPath!);
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            Notified?.Invoke($"No se pudo borrar la copia: {e.Message}");
-            return;
+            try
+            {
+                Copier.Undo(card.DestPath!);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                Notified?.Invoke($"No se pudo borrar la copia: {e.Message}");
+                return;
+            }
         }
         card.Clear();
         Changed?.Invoke();
@@ -108,10 +176,12 @@ public sealed class Board : Observable
         Changed?.Invoke();
     }
 
+    /// Held files are not saved: like the tray, they only live for the session.
     public AppState ToState() => new()
     {
         Destination = Destination,
         Locked = Locked,
+        Holding = Holding,
         Cards = Cards.Select(c => c.Status == CardStatus.Filled
             ? new CardData { Name = c.Name, DestPath = c.DestPath, OriginalName = c.OriginalName }
             : new CardData { Name = c.Name }).ToList(),
@@ -119,22 +189,51 @@ public sealed class Board : Observable
 
     public static Board FromState(AppState state)
     {
-        var board = new Board { _destination = state.Destination, _locked = state.Locked };
+        var board = new Board { _destination = state.Destination, _locked = state.Locked, _holding = state.Holding };
         foreach (var data in state.Cards)
         {
             var card = new CardViewModel(data.Name);
             if (data.DestPath is not null) card.Fill(data.DestPath, data.OriginalName ?? "");
             board.Cards.Add(card);
         }
+        if (state.Destination is not null) Copier.CleanPartials(state.Destination);
         return board;
+    }
+
+    async Task<bool> CopyToCardAsync(PendingItem item, CardViewModel card, string dest)
+    {
+        card.Status = CardStatus.Copying;
+        try
+        {
+            var path = await Copier.CopyAsync(item.SourcePath, dest, card.Name);
+            card.Fill(path, item.DisplayName);
+            if (item.IsTemp) TryDelete(item.SourcePath);
+            Changed?.Invoke();
+            return true;
+        }
+        catch (Exception e)
+        {
+            // Any failure, expected or not, must leave the card usable and the file in the tray.
+            card.Clear();
+            return Fail(item, $"No se pudo copiar «{item.DisplayName}»: {e.Message}");
+        }
     }
 
     /// Every failed assignment leaves the file in the tray so nothing is lost.
     bool Fail(PendingItem item, string message)
     {
-        if (!Pending.Contains(item)) Pending.Insert(0, item);
+        if (!IsPending(item)) Pending.Insert(0, item);
         Notified?.Invoke(message);
         return false;
+    }
+
+    bool IsPending(PendingItem item) =>
+        Pending.Any(p => string.Equals(p.SourcePath, item.SourcePath, StringComparison.OrdinalIgnoreCase));
+
+    void HeldChanged()
+    {
+        Notify(nameof(HeldCount));
+        Notify(nameof(CanRelease));
     }
 
     static void TryDelete(string path)

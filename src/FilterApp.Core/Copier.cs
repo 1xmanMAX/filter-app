@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace FilterApp.Core;
 
 /// Copies a file into the destination under the card's name. Never overwrites.
@@ -5,6 +7,7 @@ public static class Copier
 {
     const int ErrorFileExists = unchecked((int)0x80070050);
     const int ErrorAlreadyExists = unchecked((int)0x800700B7);
+    static readonly Regex PartialName = new(@"^\.[0-9a-f]{32}\.partial$");
 
     public static Task<string> CopyAsync(string sourcePath, string destDir, string cardName) =>
         Task.Run(() => Copy(sourcePath, destDir, cardName));
@@ -44,6 +47,17 @@ public static class Copier
     {
         try { File.Delete(path); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+    }
+
+    /// Removes temporary copies a crash left in a folder. Only names this class generates are touched.
+    public static void CleanPartials(string dir)
+    {
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(dir, "*.partial"))
+                if (PartialName.IsMatch(Path.GetFileName(file))) TryDelete(file);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException) { }
     }
 
     public static void Undo(string destPath)

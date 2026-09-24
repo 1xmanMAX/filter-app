@@ -237,4 +237,181 @@ public sealed class BoardTests : IDisposable
         b.Destination = @"C:\x";
         Assert.Equal(3, count);
     }
+
+    // ---- Hold mode ----
+
+    [Fact]
+    public async Task Holding_parks_file_on_card_without_copying()
+    {
+        var b = NewBoard(withDestination: false);   // no destination needed to hold
+        b.Holding = true;
+        b.AddNames("A");
+        var item = Source("a.txt");
+        b.AddPending([item]);
+
+        Assert.True(await b.AssignAsync(item, b.Cards[0]));
+
+        Assert.Equal(CardStatus.Held, b.Cards[0].Status);
+        Assert.Same(item, b.Cards[0].HeldItem);
+        Assert.Empty(b.Pending);
+        Assert.Equal(1, b.HeldCount);
+    }
+
+    [Fact]
+    public async Task Held_card_rejects_another_file()
+    {
+        var b = NewBoard();
+        b.Holding = true;
+        b.AddNames("A");
+        await b.AssignAsync(Source("1.txt"), b.Cards[0]);
+        var second = Source("2.txt");
+
+        Assert.False(await b.AssignAsync(second, b.Cards[0]));
+        Assert.Contains(second, b.Pending);
+    }
+
+    [Fact]
+    public async Task Release_copies_every_held_file_to_destination()
+    {
+        var b = NewBoard();
+        b.Holding = true;
+        b.AddNames("A\nB");
+        await b.AssignAsync(Source("a.txt", "1"), b.Cards[0]);
+        await b.AssignAsync(Source("b.txt", "2", isTemp: true), b.Cards[1]);
+        var temp = Path.Combine(_root, "src", "b.txt");
+
+        Assert.Equal(2, await b.ReleaseAsync());
+
+        Assert.All(b.Cards, c => Assert.Equal(CardStatus.Filled, c.Status));
+        Assert.Equal("1", File.ReadAllText(Path.Combine(b.Destination!, "A.txt")));
+        Assert.Equal("2", File.ReadAllText(Path.Combine(b.Destination!, "B.txt")));
+        Assert.Equal("a.txt", b.Cards[0].OriginalName);
+        Assert.False(File.Exists(temp));
+        Assert.Equal(0, b.HeldCount);
+    }
+
+    [Fact]
+    public async Task Release_failure_returns_that_file_to_pending_and_continues()
+    {
+        var b = NewBoard();
+        b.Holding = true;
+        b.AddNames("A\nB");
+        var gone = Source("gone.txt");
+        await b.AssignAsync(gone, b.Cards[0]);
+        await b.AssignAsync(Source("ok.txt"), b.Cards[1]);
+        File.Delete(gone.SourcePath);
+
+        Assert.Equal(1, await b.ReleaseAsync());
+
+        Assert.Equal(CardStatus.Free, b.Cards[0].Status);
+        Assert.Contains(gone, b.Pending);
+        Assert.Equal(CardStatus.Filled, b.Cards[1].Status);
+        Assert.NotEmpty(_messages);
+    }
+
+    [Fact]
+    public async Task Release_without_destination_keeps_files_held()
+    {
+        var b = NewBoard(withDestination: false);
+        b.Holding = true;
+        b.AddNames("A");
+        await b.AssignAsync(Source("a.txt"), b.Cards[0]);
+
+        Assert.Equal(0, await b.ReleaseAsync());
+
+        Assert.Equal(CardStatus.Held, b.Cards[0].Status);
+        Assert.NotEmpty(_messages);
+    }
+
+    [Fact]
+    public async Task ReturnHeld_puts_file_back_in_pending_and_frees_card()
+    {
+        var b = NewBoard();
+        b.Holding = true;
+        b.AddNames("A");
+        var item = Source("a.txt");
+        await b.AssignAsync(item, b.Cards[0]);
+
+        b.ReturnHeld(b.Cards[0]);
+
+        Assert.Equal(CardStatus.Free, b.Cards[0].Status);
+        Assert.Null(b.Cards[0].HeldItem);
+        Assert.Contains(item, b.Pending);
+        Assert.Equal(0, b.HeldCount);
+    }
+
+    [Fact]
+    public async Task Held_cards_are_saved_as_free_and_holding_is_remembered()
+    {
+        var b = NewBoard();
+        b.Holding = true;
+        b.AddNames("A");
+        await b.AssignAsync(Source("a.txt"), b.Cards[0]);
+
+        var r = Board.FromState(b.ToState());
+
+        Assert.True(r.Holding);
+        Assert.Equal(CardStatus.Free, r.Cards[0].Status);
+    }
+
+    // ---- Fixes ----
+
+    [Fact]
+    public async Task Undo_does_not_delete_a_file_another_card_points_to()
+    {
+        var b = NewBoard();
+        b.AddNames("X\nX");
+        await b.AssignAsync(Source("1.txt"), b.Cards[0]);
+        File.Delete(b.Cards[0].DestPath!);                   // user removed it by hand
+        await b.AssignAsync(Source("2.txt", "keep"), b.Cards[1]);   // reuses X.txt
+        Assert.Equal(b.Cards[0].DestPath, b.Cards[1].DestPath);
+
+        b.Undo(b.Cards[0]);
+
+        Assert.Equal(CardStatus.Free, b.Cards[0].Status);
+        Assert.Equal("keep", File.ReadAllText(b.Cards[1].DestPath!));
+    }
+
+    [Fact]
+    public async Task Failed_drop_of_already_pending_file_does_not_duplicate_it()
+    {
+        var b = NewBoard(withDestination: false);
+        b.AddNames("A");
+        var item = Source("a.txt");
+        b.AddPending([item]);
+        var sameFile = new PendingItem(item.SourcePath, "a.txt", false);   // dropped again from Explorer
+
+        Assert.False(await b.AssignAsync(sameFile, b.Cards[0]));
+
+        Assert.Single(b.Pending);
+    }
+
+    [Fact]
+    public void DestinationExists_tracks_the_folder()
+    {
+        var b = NewBoard();
+        Assert.False(NewBoard(withDestination: false).DestinationMissing);   // nothing chosen yet is not "missing"
+        Assert.True(b.DestinationExists);
+        Assert.False(b.DestinationMissing);
+        Directory.Delete(b.Destination!);
+        b.RefreshDestination();
+        Assert.False(b.DestinationExists);
+        Assert.True(b.DestinationMissing);
+    }
+
+    [Fact]
+    public void Choosing_destination_removes_leftover_partial_files()
+    {
+        var dir = Directory.CreateDirectory(Path.Combine(_root, "d2")).FullName;
+        var leftover = Path.Combine(dir, $".{Guid.NewGuid():N}.partial");
+        var userFile = Path.Combine(dir, ".notes.partial");
+        File.WriteAllText(leftover, "");
+        File.WriteAllText(userFile, "");
+        var b = NewBoard(withDestination: false);
+
+        b.OnExplorerFolder(dir);
+
+        Assert.False(File.Exists(leftover));
+        Assert.True(File.Exists(userFile));
+    }
 }

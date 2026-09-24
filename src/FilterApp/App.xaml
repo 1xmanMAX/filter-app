@@ -70,5 +70,30 @@
         </Trigger>
       </Style.Triggers>
     </Style>
+
+    <Style x:Key="HoldToggle" TargetType="ToggleButton">
+      <Setter Property="Background" Value="#F6F8FA"/>
+      <Setter Property="Foreground" Value="#57606A"/>
+      <Setter Property="ToolTip" Value="Retener: los archivos quedan en espera en las tarjetas y se copian todos juntos con «Soltar todo aquí»."/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ToggleButton">
+            <Border Height="34" Padding="10,0" CornerRadius="6" Background="{TemplateBinding Background}">
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="&#xE769;" FontFamily="{StaticResource IconFont}" FontSize="14" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <TextBlock Text="Retener" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <Trigger Property="IsChecked" Value="True">
+          <Setter Property="Background" Value="#FBEFFF"/>
+          <Setter Property="Foreground" Value="#8250DF"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
   </Application.Resources>
 </Application>

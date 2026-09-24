@@ -29,12 +29,20 @@ public partial class MainWindow : Window
         board.Notified += ShowToast;
         _saveTimer.Tick += (_, _) => { _saveTimer.Stop(); Save(); };
         _toastTimer.Tick += (_, _) => { _toastTimer.Stop(); Toast.Visibility = Visibility.Collapsed; };
+        Activated += (_, _) => _board.RefreshDestination();
         Closing += (_, e) =>
         {
             if (_board.IsCopying)
             {
                 e.Cancel = true;
                 ShowToast("Espera a que termine la copia antes de cerrar.");
+                return;
+            }
+            if (_board.HeldCount > 0 && MessageBox.Show(this,
+                    $"Hay {_board.HeldCount} archivo(s) en espera que aún no se copiaron. ¿Cerrar de todos modos?",
+                    "Filter App", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            {
+                e.Cancel = true;
                 return;
             }
             _watcher.Dispose();
@@ -57,6 +65,23 @@ public partial class MainWindow : Window
         Toast.Visibility = Visibility.Visible;
         _toastTimer.Stop();
         _toastTimer.Start();
+    }
+
+    void HideToast()
+    {
+        _toastTimer.Stop();
+        Toast.Visibility = Visibility.Collapsed;
+    }
+
+    /// Brings the window to the front (a second launch of the app lands here).
+    public void BringToFront()
+    {
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Show();
+        Activate();
+        Topmost = true;    // Activate alone may only flash the taskbar button
+        Topmost = false;
+        Focus();
     }
 
     // ---- Paste and external drops into the tray ----
@@ -86,6 +111,13 @@ public partial class MainWindow : Window
 
     List<PendingItem> ReadIntake(IDataObject data)
     {
+        if (FileIntake.IsVirtual(data))
+        {
+            // Virtual files (Outlook, browsers) must be read on this thread, while the drop's data object is
+            // alive, and can take a while: show that the app is working before blocking.
+            ShowToast("Leyendo archivos…");
+            Dispatcher.Invoke(() => { }, DispatcherPriority.Render);
+        }
         IntakeResult result;
         try { result = FileIntake.Read(data); }
         catch (Exception e)
@@ -93,7 +125,9 @@ public partial class MainWindow : Window
             ShowToast($"No se pudieron leer los archivos: {e.Message}");
             return [];
         }
-        if (result.RejectedFolders > 0) ShowToast("Las carpetas no se admiten; solo archivos.");
+        if (result.Unreadable > 0) ShowToast($"{result.Unreadable} archivo(s) no se pudieron leer.");
+        else if (result.RejectedFolders > 0) ShowToast("Las carpetas no se admiten; solo archivos.");
+        else if (FileIntake.IsVirtual(data)) HideToast();
         return result.Items;
     }
 
@@ -172,7 +206,17 @@ public partial class MainWindow : Window
     {
         if (CardOf(sender) is not { } card) return;
         if (card.Status == CardStatus.Filled) _board.Undo(card);
+        else if (card.Status == CardStatus.Held) _board.ReturnHeld(card);
         else if (card.Status == CardStatus.Free) _board.RemoveCard(card);
+    }
+
+    async void OnRelease(object sender, RoutedEventArgs e)
+    {
+        var dest = _board.Destination;
+        int held = _board.HeldCount;
+        int copied = await _board.ReleaseAsync();
+        // Failures already showed their own message; only a clean run gets the summary.
+        if (copied > 0 && copied == held) ShowToast($"{copied} archivo(s) copiados a {dest}.");
     }
 
     void OnClearFilled(object sender, RoutedEventArgs e) => _board.ClearFilled();

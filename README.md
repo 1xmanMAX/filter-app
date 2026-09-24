@@ -6,7 +6,7 @@
 
 <p align="center">
   Arrastra un archivo a un nombre → se copia a tu carpeta <b>ya renombrado</b>.<br>
-  <a href="https://github.com/1xmanMAX/filter-app/releases/latest/download/FilterApp-win-x64.zip"><b>⬇ Descargar para Windows</b></a>
+  <a href="https://github.com/1xmanMAX/filter-app/releases/latest/download/FilterApp-Setup.exe"><b>⬇ Descargar para Windows</b></a>
 </p>
 
 <p align="center">
@@ -17,11 +17,13 @@
 
 | 1 | 2 | 3 |
 |:-:|:-:|:-:|
-| Descarga el **ZIP** y descomprímelo | Doble clic en **`Instalar.cmd`** | Busca **Filter App** en Inicio 🔍 |
+| Descarga **`FilterApp-Setup.exe`** | Doble clic → **Siguiente** → **Instalar** | Busca **Filter App** en Inicio 🔍 |
 
-> No necesitas instalar nada más. Se añade al menú Inicio, al escritorio y a *Configuración › Aplicaciones* (desde ahí también se desinstala).
+> No necesitas instalar nada más ni permisos de administrador. Se añade al menú Inicio, al escritorio y a *Configuración › Aplicaciones* (desde ahí se desinstala). Para actualizar, instala la versión nueva encima: tus sesiones se conservan.
 >
 > Si Windows muestra *"Windows protegió su PC"*: **Más información → Ejecutar de todas formas**.
+>
+> ¿Sin instalador? Descarga el [ZIP](https://github.com/1xmanMAX/filter-app/releases/latest/download/FilterApp-win-x64.zip) y usa `Instalar.cmd`.
 
 ## Cómo se usa
 
@@ -59,7 +61,19 @@ flowchart LR
     N -- otro día --> L2["📂 Clientes marzo<br>completa las 3 que faltan"]
 ```
 
-Pulsa el botón **📂** (arriba a la izquierda) para crear, cambiar, renombrar o eliminar sesiones. Cada una guarda sus tarjetas, su destino y sus pendientes.
+<img src="docs/sessions.svg" align="right" width="330" alt="Panel de sesiones">
+
+Pulsa **📂** (arriba a la izquierda):
+
+- **＋ Nueva** → escribe el nombre y Enter
+- **Clic** en una sesión → la abre
+- **✏️ / 🗑** → renombrar o eliminar
+- La barra verde muestra cuánto falta
+
+Cada sesión guarda sus tarjetas, su destino y sus pendientes.
+
+<br clear="right">
+
 
 ## Botones
 

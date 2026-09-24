@@ -9,9 +9,18 @@ public sealed class CardData
     public string? OriginalName { get; set; }
 }
 
+public sealed class PendingData
+{
+    public string Path { get; set; } = "";
+    public string Name { get; set; } = "";
+}
+
+/// Everything a session saves: its name, cards, tray and destination.
 public sealed class AppState
 {
+    public string Name { get; set; } = "";
     public List<CardData> Cards { get; set; } = [];
+    public List<PendingData> Pending { get; set; } = [];
     public string? Destination { get; set; }
     public bool Locked { get; set; }
     public bool Holding { get; set; }
@@ -30,8 +39,11 @@ public static class StateStore
         try
         {
             var state = JsonSerializer.Deserialize<AppState>(File.ReadAllText(path), Options) ?? new AppState();
+            state.Name ??= "";
             state.Cards = (state.Cards ?? []).Where(c => c is not null).ToList();
             foreach (var card in state.Cards) card.Name ??= "";
+            state.Pending = (state.Pending ?? []).Where(p => p is { Path: not null }).ToList();
+            foreach (var item in state.Pending) item.Name ??= System.IO.Path.GetFileName(item.Path);
             return state;
         }
         catch (JsonException)

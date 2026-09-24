@@ -31,8 +31,9 @@ public partial class App : Application
             MessageBox.Show(args.Exception.Message, "Filter App", MessageBoxButton.OK, MessageBoxImage.Warning);
         };
         FilterApp.Intake.FileIntake.CleanTemp();
-        var board = Board.FromState(StateStore.Load(StateStore.DefaultPath));
-        var window = new MainWindow(board);
+        var sessions = SessionStore.Default;
+        var sessionId = sessions.OpenCurrent(out var state);
+        var window = new MainWindow(Board.FromState(state), sessions, sessionId);
         window.Show();
 
         var signal = _showSignal;

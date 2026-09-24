@@ -354,6 +354,74 @@ public sealed class BoardTests : IDisposable
         Assert.Equal(CardStatus.Free, r.Cards[0].Status);
     }
 
+    // ---- Sessions ----
+
+    [Fact]
+    public async Task Pending_and_held_files_are_saved_as_pending_but_temp_files_are_not()
+    {
+        var b = NewBoard();
+        b.Name = "Clientes";
+        b.AddNames("A");
+        var pending = Source("p.txt");
+        var temp = Source("clip.png", isTemp: true);
+        b.AddPending([pending, temp]);
+        b.Holding = true;
+        var held = Source("h.txt");
+        await b.AssignAsync(held, b.Cards[0]);
+
+        Assert.Equal(1, b.UnsavedCount);
+        var r = Board.FromState(b.ToState());
+
+        Assert.Equal("Clientes", r.Name);
+        Assert.Equal([pending.SourcePath, held.SourcePath], r.Pending.Select(p => p.SourcePath));
+        Assert.Equal(["p.txt", "h.txt"], r.Pending.Select(p => p.DisplayName));
+        Assert.Equal(CardStatus.Free, r.Cards[0].Status);
+    }
+
+    [Fact]
+    public void Tray_changes_trigger_a_save()
+    {
+        var b = NewBoard();
+        int count = 0;
+        b.Changed += () => count++;
+        var item = Source("a.txt");
+
+        b.AddPending([item]);
+        b.RemovePending(item);
+
+        Assert.Equal(2, count);
+    }
+
+    [Fact]
+    public void Saved_pending_files_that_no_longer_exist_are_dropped()
+    {
+        var b = NewBoard();
+        var gone = Source("gone.txt");
+        b.AddPending([gone, Source("ok.txt")]);
+        var state = b.ToState();
+        File.Delete(gone.SourcePath);
+
+        Assert.Equal(["ok.txt"], Board.FromState(state).Pending.Select(p => p.DisplayName));
+    }
+
+    [Fact]
+    public async Task LoadState_replaces_the_whole_board()
+    {
+        var b = NewBoard();
+        b.AddNames("A\nB");
+        var temp = Source("clip.png", isTemp: true);
+        b.AddPending([temp]);
+        await b.AssignAsync(Source("x.txt"), b.Cards[0]);
+
+        b.LoadState(new AppState { Name = "Otra", Destination = @"C:\otra", Cards = [new CardData { Name = "Z" }] });
+
+        Assert.Equal("Otra", b.Name);
+        Assert.Equal(@"C:\otra", b.Destination);
+        Assert.Equal(["Z"], b.Cards.Select(c => c.Name));
+        Assert.Empty(b.Pending);
+        Assert.False(File.Exists(temp.SourcePath));   // unsaved temp files are cleaned up, not leaked
+    }
+
     // ---- Fixes ----
 
     [Fact]

@@ -7,6 +7,7 @@ public sealed class Board : Observable
 {
     const string NoDestination = "Haz clic en una carpeta del Explorador para elegir el destino.";
 
+    string _name = "";
     string? _destination;
     bool _locked;
     bool _holding;
@@ -15,10 +16,23 @@ public sealed class Board : Observable
     public ObservableCollection<CardViewModel> Cards { get; } = [];
     public ObservableCollection<PendingItem> Pending { get; } = [];
 
+    public Board()
+    {
+        // The tray is part of the saved session.
+        Pending.CollectionChanged += (_, _) => Changed?.Invoke();
+    }
+
     /// Raised when something that must be persisted changed.
     public event Action? Changed;
     /// Raised with a short message for the user.
     public event Action<string>? Notified;
+
+    /// Name of the session this board belongs to.
+    public string Name
+    {
+        get => _name;
+        set { if (Set(ref _name, value)) Changed?.Invoke(); }
+    }
 
     public string? Destination
     {
@@ -52,6 +66,8 @@ public sealed class Board : Observable
     public int HeldCount => Cards.Count(c => c.Status == CardStatus.Held);
     public bool CanRelease => !_releasing && HeldCount > 0 && DestinationExists;
     public bool IsCopying => Cards.Any(c => c.Status == CardStatus.Copying);
+    /// Files that live only in the app's temp folder (pasted images, Outlook attachments) and are not saved.
+    public int UnsavedCount => WaitingItems().Count(p => p.IsTemp);
 
     /// Re-checks the destination folder (it may have been deleted or renamed outside the app).
     public void RefreshDestination()
@@ -176,29 +192,53 @@ public sealed class Board : Observable
         Changed?.Invoke();
     }
 
-    /// Held files are not saved: like the tray, they only live for the session.
+    /// Held files are saved back into the tray (they were never copied). Temp files are not saved.
     public AppState ToState() => new()
     {
+        Name = Name,
         Destination = Destination,
         Locked = Locked,
         Holding = Holding,
         Cards = Cards.Select(c => c.Status == CardStatus.Filled
             ? new CardData { Name = c.Name, DestPath = c.DestPath, OriginalName = c.OriginalName }
             : new CardData { Name = c.Name }).ToList(),
+        Pending = WaitingItems().Where(p => !p.IsTemp)
+            .Select(p => new PendingData { Path = p.SourcePath, Name = p.DisplayName }).ToList(),
     };
 
     public static Board FromState(AppState state)
     {
-        var board = new Board { _destination = state.Destination, _locked = state.Locked, _holding = state.Holding };
+        var board = new Board();
+        board.LoadState(state);
+        return board;
+    }
+
+    /// Replaces the whole board with a saved session. Unsaved temp files of the old one are deleted.
+    public void LoadState(AppState state)
+    {
+        foreach (var item in WaitingItems().Where(p => p.IsTemp).ToList()) TryDelete(item.SourcePath);
+        Cards.Clear();
+        Pending.Clear();
+
+        _name = state.Name;
+        _destination = state.Destination;
+        _locked = state.Locked;
+        _holding = state.Holding;
         foreach (var data in state.Cards)
         {
             var card = new CardViewModel(data.Name);
             if (data.DestPath is not null) card.Fill(data.DestPath, data.OriginalName ?? "");
-            board.Cards.Add(card);
+            Cards.Add(card);
         }
+        // Files can be moved or deleted between sessions; only the ones still there come back.
+        AddPending(state.Pending.Where(p => File.Exists(p.Path)).Select(p => new PendingItem(p.Path, p.Name, isTemp: false)));
         if (state.Destination is not null) Copier.CleanPartials(state.Destination);
-        return board;
+        Notify(string.Empty);   // every property changed
     }
+
+    /// Files not copied yet: the tray plus the ones held on cards.
+    IEnumerable<PendingItem> WaitingItems() =>
+        Pending.Concat(Cards.Where(c => c.Status == CardStatus.Held).Select(c => c.HeldItem!));
 
     async Task<bool> CopyToCardAsync(PendingItem item, CardViewModel card, string dest)
     {
@@ -234,6 +274,7 @@ public sealed class Board : Observable
     {
         Notify(nameof(HeldCount));
         Notify(nameof(CanRelease));
+        Changed?.Invoke();   // held files are saved with the session
     }
 
     static void TryDelete(string path)

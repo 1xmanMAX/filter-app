@@ -1,6 +1,8 @@
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Threading;
 using FilterApp.Core;
@@ -12,16 +14,20 @@ namespace FilterApp;
 public partial class MainWindow : Window
 {
     readonly Board _board;
+    readonly SessionStore _sessions;
+    string _sessionId;
     readonly DispatcherTimer _saveTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
     readonly DispatcherTimer _toastTimer = new() { Interval = TimeSpan.FromSeconds(4) };
     readonly FolderWatcher _watcher = new();
     Point _dragStart;
     PendingItem? _dragItem;
 
-    public MainWindow(Board board)
+    public MainWindow(Board board, SessionStore sessions, string sessionId)
     {
         InitializeComponent();
         _board = board;
+        _sessions = sessions;
+        _sessionId = sessionId;
         DataContext = board;
         _watcher.FolderActivated += _board.OnExplorerFolder;
 
@@ -38,9 +44,7 @@ public partial class MainWindow : Window
                 ShowToast("Espera a que termine la copia antes de cerrar.");
                 return;
             }
-            if (_board.HeldCount > 0 && MessageBox.Show(this,
-                    $"Hay {_board.HeldCount} archivo(s) en espera que aún no se copiaron. ¿Cerrar de todos modos?",
-                    "Filter App", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            if (!ConfirmUnsaved("cerrar"))
             {
                 e.Cancel = true;
                 return;
@@ -50,13 +54,136 @@ public partial class MainWindow : Window
         };
     }
 
-    void Save()
+    bool Save()
     {
-        try { StateStore.Save(StateStore.DefaultPath, _board.ToState()); }
+        _saveTimer.Stop();
+        try
+        {
+            _sessions.Save(_sessionId, _board.ToState());
+            return true;
+        }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            ShowToast($"No se pudo guardar el estado: {e.Message}");
+            ShowToast($"No se pudo guardar la sesión: {e.Message}");
+            return false;
         }
+    }
+
+    /// Temp files (pasted images, Outlook attachments) cannot be saved; ask before losing them.
+    bool ConfirmUnsaved(string action) =>
+        _board.UnsavedCount == 0 || MessageBox.Show(this,
+            $"{_board.UnsavedCount} archivo(s) pegados o de Outlook no se pueden guardar y se perderán al {action}. ¿Continuar?",
+            "Filter App", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
+
+    // ---- Sessions ----
+
+    void OnSessionMenu(object sender, RoutedEventArgs e)
+    {
+        Save();   // so the list shows this session's latest progress
+        var menu = new ContextMenu { PlacementTarget = SessionButton, Placement = PlacementMode.Bottom };
+        foreach (var session in _sessions.List())
+        {
+            var item = new MenuItem
+            {
+                Header = session.Name,
+                InputGestureText = $"{session.Filled}/{session.Total}",
+                IsChecked = session.Id == _sessionId,
+            };
+            var id = session.Id;
+            item.Click += (_, _) => SwitchTo(id);
+            menu.Items.Add(item);
+        }
+        menu.Items.Add(new Separator());
+        menu.Items.Add(MenuAction("Nueva sesión…", "", OnNewSession));
+        menu.Items.Add(MenuAction("Renombrar…", "", OnRenameSession));
+        menu.Items.Add(MenuAction("Eliminar esta sesión", "", OnDeleteSession));
+        menu.IsOpen = true;
+    }
+
+    static MenuItem MenuAction(string text, string glyph, Action action)
+    {
+        var item = new MenuItem
+        {
+            Header = text,
+            Icon = new TextBlock { Text = glyph, FontFamily = (System.Windows.Media.FontFamily)Application.Current.Resources["IconFont"] },
+        };
+        item.Click += (_, _) => action();
+        return item;
+    }
+
+    /// Saves the open session and loads another. Refused while copying.
+    bool CanLeaveSession()
+    {
+        if (_board.IsCopying)
+        {
+            ShowToast("Espera a que termine la copia antes de cambiar de sesión.");
+            return false;
+        }
+        return ConfirmUnsaved("cambiar de sesión") && Save();
+    }
+
+    void Open(string id, AppState state)
+    {
+        _sessionId = id;
+        _sessions.CurrentId = id;
+        _board.LoadState(state);
+        _board.RefreshDestination();
+    }
+
+    void SwitchTo(string id)
+    {
+        if (id == _sessionId || !CanLeaveSession()) return;
+        if (!_sessions.Exists(id))
+        {
+            ShowToast("Esa sesión ya no existe.");
+            return;
+        }
+        Open(id, _sessions.Load(id));
+        ShowToast($"Sesión «{_board.Name}» abierta.");
+    }
+
+    void OnNewSession()
+    {
+        var dialog = new PromptDialog("Nueva sesión", "Nombre de la nueva sesión:", "Crear") { Owner = this };
+        if (dialog.ShowDialog() != true || !CanLeaveSession()) return;
+        // The destination carries over: a new list usually goes to the folder already open.
+        var state = new AppState { Destination = _board.Destination };
+        Open(_sessions.Create(dialog.Value, state), state);
+        ShowToast($"Sesión «{dialog.Value}» creada. La anterior quedó guardada.");
+    }
+
+    void OnRenameSession()
+    {
+        var dialog = new PromptDialog("Renombrar sesión", "Nuevo nombre:", "Guardar", _board.Name) { Owner = this };
+        if (dialog.ShowDialog() == true) _board.Name = dialog.Value;
+    }
+
+    void OnDeleteSession()
+    {
+        if (_board.IsCopying)
+        {
+            ShowToast("Espera a que termine la copia.");
+            return;
+        }
+        if (MessageBox.Show(this,
+                $"¿Eliminar la sesión «{_board.Name}»?\n\nSolo se borra la lista de tarjetas; los archivos ya copiados no se tocan.",
+                "Filter App", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+
+        _saveTimer.Stop();
+        try { _sessions.Delete(_sessionId); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            ShowToast($"No se pudo eliminar la sesión: {e.Message}");
+            return;
+        }
+        var next = _sessions.List().FirstOrDefault();
+        if (next is not null) Open(next.Id, _sessions.Load(next.Id));
+        else
+        {
+            var state = new AppState { Destination = _board.Destination };
+            Open(_sessions.Create(SessionStore.DefaultName, state), state);
+        }
+        ShowToast($"Sesión eliminada. Ahora estás en «{_board.Name}».");
     }
 
     void ShowToast(string message)

@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="470" viewBox="0 0 880 470" font-family="Segoe UI, Arial, sans-serif">
+  <!-- Window -->
+  <rect x="0.5" y="0.5" width="879" height="469" rx="10" fill="#F4F5F7" stroke="#D0D7DE"/>
+  <rect x="0.5" y="0.5" width="879" height="34" rx="10" fill="#FFFFFF"/>
+  <rect x="0.5" y="24" width="879" height="11" fill="#FFFFFF"/>
+  <text x="16" y="23" font-size="13" fill="#24292F">Filter App</text>
+  <text x="800" y="23" font-size="13" fill="#57606A">—   ☐   ✕</text>
+
+  <!-- Destination bar -->
+  <rect x="0.5" y="35" width="879" height="62" fill="#FFFFFF"/>
+  <line x1="0" y1="97" x2="880" y2="97" stroke="#E1E4E8"/>
+  <rect x="16" y="49" width="36" height="34" rx="6" fill="#F6F8FA"/>
+  <text x="27" y="72" font-size="16" fill="#57606A">🔓</text>
+  <rect x="60" y="49" width="92" height="34" rx="6" fill="#FBEFFF"/>
+  <text x="72" y="71" font-size="14" fill="#8250DF">⏸ Retener</text>
+  <text x="166" y="61" font-size="10" font-weight="600" fill="#57606A">DESTINO</text>
+  <text x="166" y="81" font-size="16" font-weight="600" fill="#24292F">F:\Clientes 2026</text>
+  <rect x="598" y="49" width="160" height="34" rx="6" fill="#0969DA"/>
+  <text x="678" y="71" font-size="13.5" fill="#FFFFFF" text-anchor="middle">Soltar todo aquí (2)</text>
+  <text x="772" y="71" font-size="13" fill="#57606A">Pendientes: <tspan font-weight="600">1</tspan></text>
+
+  <!-- Pending tray -->
+  <rect x="16" y="113" width="228" height="340" rx="8" fill="#FFFFFF" stroke="#D0D7DE"/>
+  <text x="28" y="134" font-size="10" font-weight="600" fill="#57606A">PENDIENTES</text>
+  <rect x="24" y="144" width="212" height="28" rx="4" fill="#F6F8FA"/>
+  <text x="32" y="163" font-size="13" fill="#24292F">WhatsApp Image 0923.jpg</text>
+
+  <!-- Cards header -->
+  <text x="260" y="134" font-size="10" font-weight="600" fill="#57606A">TARJETAS</text>
+  <rect x="672" y="113" width="100" height="30" rx="6" fill="#FFFFFF" stroke="#D0D7DE"/>
+  <text x="722" y="133" font-size="12.5" fill="#24292F" text-anchor="middle">Limpiar llenas</text>
+  <rect x="780" y="113" width="84" height="30" rx="6" fill="#0969DA"/>
+  <text x="822" y="133" font-size="12.5" fill="#FFFFFF" text-anchor="middle">+ Nombres</text>
+
+  <!-- Row 1: filled -->
+  <g font-size="13">
+    <rect x="260" y="156" width="190" height="90" rx="8" fill="#DAFBE1" stroke="#2DA44E"/>
+    <text x="272" y="180" font-weight="600" fill="#24292F">Juan Perez - DNI</text>
+    <text x="272" y="232" font-size="12" fill="#1A7F37">✔ IMG_2026_1015.pdf</text>
+
+    <rect x="462" y="156" width="190" height="90" rx="8" fill="#DAFBE1" stroke="#2DA44E"/>
+    <text x="474" y="180" font-weight="600" fill="#24292F">Juan Perez - Contrato</text>
+    <text x="474" y="232" font-size="12" fill="#1A7F37">✔ document (3).docx</text>
+
+    <!-- held -->
+    <rect x="664" y="156" width="190" height="90" rx="8" fill="#FBEFFF" stroke="#8250DF"/>
+    <text x="676" y="180" font-weight="600" fill="#24292F">Maria Lopez - DNI</text>
+    <text x="676" y="232" font-size="12" fill="#8250DF">⏸ scan_001.pdf</text>
+
+    <!-- Row 2 -->
+    <rect x="260" y="258" width="190" height="90" rx="8" fill="#FBEFFF" stroke="#8250DF"/>
+    <text x="272" y="282" font-weight="600" fill="#24292F">Maria Lopez - Recibo</text>
+    <text x="272" y="334" font-size="12" fill="#8250DF">⏸ recibo.jpg</text>
+
+    <rect x="462" y="258" width="190" height="90" rx="8" fill="#DDF4FF" stroke="#0969DA" stroke-width="2"/>
+    <text x="474" y="282" font-weight="600" fill="#24292F">Carlos Ruiz - Factura</text>
+    <text x="474" y="334" font-size="12" fill="#8C959F">libre</text>
+
+    <rect x="664" y="258" width="190" height="90" rx="8" fill="#FFFFFF" stroke="#D0D7DE"/>
+    <text x="676" y="282" font-weight="600" fill="#24292F">Carlos Ruiz - Foto</text>
+    <text x="676" y="334" font-size="12" fill="#8C959F">libre</text>
+  </g>
+
+  <!-- Drag hint: file from tray to a card -->
+  <path d="M 236 158 C 330 150, 420 360, 500 310" fill="none" stroke="#0969DA" stroke-width="2" stroke-dasharray="6 5"/>
+  <path d="M 500 310 l -12 -1 l 7 -9 z" fill="#0969DA"/>
+
+  <!-- Legend -->
+  <g font-size="12" fill="#57606A">
+    <rect x="260" y="378" width="12" height="12" rx="3" fill="#DAFBE1" stroke="#2DA44E"/><text x="278" y="389">copiado</text>
+    <rect x="350" y="378" width="12" height="12" rx="3" fill="#FBEFFF" stroke="#8250DF"/><text x="368" y="389">en espera (Retener)</text>
+    <rect x="500" y="378" width="12" height="12" rx="3" fill="#FFFFFF" stroke="#D0D7DE"/><text x="518" y="389">libre</text>
+  </g>
+</svg>

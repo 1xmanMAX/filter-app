@@ -483,3 +483,6 @@ $RECYCLE.BIN/
 
 publish/
 .superpowers/
+
+# Release packaging output
+release/

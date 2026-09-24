@@ -49,10 +49,23 @@ flowchart LR
     S --> OK["✅ Todos copiados"]
 ```
 
+## Sesiones 📂
+
+¿Te faltaron archivos? No pasa nada: **todo se guarda solo**. Retómalo otro día.
+
+```mermaid
+flowchart LR
+    L["📂 Clientes marzo<br>7/10"] -- Nueva sesión --> N["📂 Contratos abril<br>0/15"]
+    N -- otro día --> L2["📂 Clientes marzo<br>completa las 3 que faltan"]
+```
+
+Pulsa el botón **📂** (arriba a la izquierda) para crear, cambiar, renombrar o eliminar sesiones. Cada una guarda sus tarjetas, su destino y sus pendientes.
+
 ## Botones
 
 | | |
 |---|---|
+| 📂 **Sesión** | Crear, cambiar, renombrar o eliminar sesiones (listas guardadas) |
 | 🔓 / 🔒 | Destino automático (sigue al Explorador) / fijo |
 | ⏸ **Retener** | Guarda los archivos en las tarjetas hasta pulsar **Soltar todo aquí** |
 | ✕ en tarjeta verde | Deshacer: borra la copia y libera la tarjeta |

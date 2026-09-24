@@ -5,7 +5,7 @@ using FilterApp.Core;
 
 namespace FilterApp.Intake;
 
-public sealed record IntakeResult(List<PendingItem> Items, int RejectedFolders);
+public sealed record IntakeResult(List<PendingItem> Items, int RejectedFolders, int Unreadable = 0);
 
 /// Converts whatever was dropped or pasted into pending files.
 public static class FileIntake
@@ -17,6 +17,10 @@ public static class FileIntake
         data.GetDataPresent(DataFormats.FileDrop) ||
         data.GetDataPresent(VirtualFormat) ||
         data.GetDataPresent(DataFormats.Bitmap);
+
+    /// True when reading the data means extracting file contents (slow), not just taking paths.
+    public static bool IsVirtual(IDataObject data) =>
+        !data.GetDataPresent(DataFormats.FileDrop) && data.GetDataPresent(VirtualFormat);
 
     public static IntakeResult Read(IDataObject data)
     {
@@ -33,8 +37,8 @@ public static class FileIntake
         }
         if (data.GetDataPresent(VirtualFormat))
         {
-            var files = VirtualFileReader.Extract(data, NewTempDir());
-            return new IntakeResult(files.Select(p => new PendingItem(p, Path.GetFileName(p), isTemp: true)).ToList(), 0);
+            var files = VirtualFileReader.Extract(data, NewTempDir(), out int unreadable);
+            return new IntakeResult(files.Select(p => new PendingItem(p, Path.GetFileName(p), isTemp: true)).ToList(), 0, unreadable);
         }
         if (data.GetData(DataFormats.Bitmap) is BitmapSource bitmap)
             return new IntakeResult([SaveBitmap(bitmap)], 0);

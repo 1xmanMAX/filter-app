@@ -1,3 +1,4 @@
+using System.Threading;
 using System.Windows;
 using FilterApp.Core;
 
@@ -5,8 +6,24 @@ namespace FilterApp;
 
 public partial class App : Application
 {
+    const string InstanceName = "FilterApp.SingleInstance";
+    // Kept in fields for the whole run: while the mutex lives, other launches know this one exists.
+    Mutex? _instance;
+    EventWaitHandle? _showSignal;
+
     void OnStartup(object sender, StartupEventArgs e)
     {
+        // A second copy would share state.json and could delete the other one's in-progress copies:
+        // hand over to the running window instead.
+        _instance = new Mutex(true, InstanceName, out bool isFirst);
+        _showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, InstanceName + ".Show");
+        if (!isFirst)
+        {
+            _showSignal.Set();
+            Shutdown();
+            return;
+        }
+
         // Last-resort safety net: an unexpected error must never close the app mid-work.
         DispatcherUnhandledException += (_, args) =>
         {
@@ -15,6 +32,11 @@ public partial class App : Application
         };
         FilterApp.Intake.FileIntake.CleanTemp();
         var board = Board.FromState(StateStore.Load(StateStore.DefaultPath));
-        new MainWindow(board).Show();
+        var window = new MainWindow(board);
+        window.Show();
+
+        var signal = _showSignal;
+        ThreadPool.RegisterWaitForSingleObject(signal, (_, _) => Dispatcher.BeginInvoke(window.BringToFront),
+                                               null, Timeout.Infinite, executeOnlyOnce: false);
     }
 }

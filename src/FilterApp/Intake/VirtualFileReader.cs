@@ -17,9 +17,10 @@ static class VirtualFileReader
     const uint FdAttributes = 0x4, FdFileSize = 0x40, DirectoryAttribute = 0x10;
     static readonly char[] Invalid = Path.GetInvalidFileNameChars();
 
-    public static List<string> Extract(IDataObject data, string tempDir)
+    public static List<string> Extract(IDataObject data, string tempDir, out int unreadable)
     {
         var result = new List<string>();
+        unreadable = 0;
         if (data.GetData("FileGroupDescriptorW") is not MemoryStream descriptor || data is not ComDataObject com)
             return result;
 
@@ -50,10 +51,21 @@ static class VirtualFileReader
             try
             {
                 if (TryWriteContents(com, contentsFormat, i, path, size)) result.Add(path);
+                else unreadable++;
             }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException or COMException) { }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or COMException)
+            {
+                unreadable++;
+                TryDelete(path);   // a half-written file must not look like a good one
+            }
         }
         return result;
+    }
+
+    static void TryDelete(string path)
+    {
+        try { File.Delete(path); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
     }
 
     static bool TryWriteContents(ComDataObject com, short format, int index, string path, long? size)

@@ -120,6 +120,31 @@ public sealed class BoardTests : IDisposable
     }
 
     [Fact]
+    public async Task Unexpected_copy_error_frees_card_and_keeps_item()
+    {
+        var b = NewBoard();
+        var card = new CardViewModel(null!);   // e.g. hand-edited state.json
+        b.Cards.Add(card);
+        var item = Source("a.txt");
+        b.AddPending([item]);
+
+        Assert.False(await b.AssignAsync(item, card));
+        Assert.Equal(CardStatus.Free, card.Status);
+        Assert.Contains(item, b.Pending);
+        Assert.NotEmpty(_messages);
+    }
+
+    [Fact]
+    public void IsCopying_reports_cards_in_progress()
+    {
+        var b = NewBoard();
+        b.AddNames("A\nB");
+        Assert.False(b.IsCopying);
+        b.Cards[1].Status = CardStatus.Copying;
+        Assert.True(b.IsCopying);
+    }
+
+    [Fact]
     public async Task Temp_source_is_deleted_after_copy()
     {
         var b = NewBoard();

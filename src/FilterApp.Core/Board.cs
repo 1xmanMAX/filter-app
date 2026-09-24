@@ -28,6 +28,8 @@ public sealed class Board : Observable
         set { if (Set(ref _locked, value)) Changed?.Invoke(); }
     }
 
+    public bool IsCopying => Cards.Any(c => c.Status == CardStatus.Copying);
+
     public int AddNames(string text)
     {
         var names = text.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
@@ -71,8 +73,9 @@ public sealed class Board : Observable
             Changed?.Invoke();
             return true;
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception e)
         {
+            // Any failure, expected or not, must leave the card usable and the file in the tray.
             card.Status = CardStatus.Free;
             return Fail(item, $"No se pudo copiar «{item.DisplayName}»: {e.Message}");
         }

@@ -29,12 +29,18 @@ public static class StateStore
         try
         {
             var state = JsonSerializer.Deserialize<AppState>(File.ReadAllText(path), Options) ?? new AppState();
-            state.Cards ??= [];
+            state.Cards = (state.Cards ?? []).Where(c => c is not null).ToList();
+            foreach (var card in state.Cards) card.Name ??= "";
             return state;
         }
         catch (JsonException)
         {
-            File.Move(path, path + ".bad", overwrite: true);
+            try { File.Move(path, path + ".bad", overwrite: true); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+            return new AppState();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
             return new AppState();
         }
     }

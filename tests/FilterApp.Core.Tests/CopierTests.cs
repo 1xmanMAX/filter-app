@@ -57,6 +57,21 @@ public sealed class CopierTests : IDisposable
         await Assert.ThrowsAnyAsync<IOException>(() => Copier.CopyAsync(Source("a.txt"), Path.Combine(_root, "gone"), "X"));
 
     [Fact]
+    public void Interrupted_copy_never_leaves_a_file_under_the_final_name()
+    {
+        var dest = Dest;
+        void HalfCopyThenFail(string source, string target)
+        {
+            File.WriteAllText(target, "half");
+            throw new IOException("disk gone");
+        }
+
+        Assert.Throws<IOException>(() => Copier.Copy(Source("big.bin"), dest, "X", HalfCopyThenFail));
+
+        Assert.Empty(Directory.GetFiles(dest));
+    }
+
+    [Fact]
     public async Task Undo_deletes_the_copy()
     {
         var result = await Copier.CopyAsync(Source("a.txt"), Dest, "X");

@@ -29,7 +29,17 @@ public partial class MainWindow : Window
         board.Notified += ShowToast;
         _saveTimer.Tick += (_, _) => { _saveTimer.Stop(); Save(); };
         _toastTimer.Tick += (_, _) => { _toastTimer.Stop(); Toast.Visibility = Visibility.Collapsed; };
-        Closing += (_, _) => { _watcher.Dispose(); Save(); };
+        Closing += (_, e) =>
+        {
+            if (_board.IsCopying)
+            {
+                e.Cancel = true;
+                ShowToast("Espera a que termine la copia antes de cerrar.");
+                return;
+            }
+            _watcher.Dispose();
+            Save();
+        };
     }
 
     void Save()
@@ -76,7 +86,13 @@ public partial class MainWindow : Window
 
     List<PendingItem> ReadIntake(IDataObject data)
     {
-        var result = FileIntake.Read(data);
+        IntakeResult result;
+        try { result = FileIntake.Read(data); }
+        catch (Exception e)
+        {
+            ShowToast($"No se pudieron leer los archivos: {e.Message}");
+            return [];
+        }
         if (result.RejectedFolders > 0) ShowToast("Las carpetas no se admiten; solo archivos.");
         return result.Items;
     }

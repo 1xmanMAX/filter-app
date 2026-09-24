@@ -39,7 +39,14 @@ static class ExplorerPath
         // The first ShellTabWindowClass child is the tab in front.
         IntPtr activeTab = FindWindowEx(hwnd, IntPtr.Zero, "ShellTabWindowClass", null);
         string? fallback = null;
-        foreach (object window in _shell!.Windows())
+        IEnumerable<object> windows;
+        try { windows = ((System.Collections.IEnumerable)_shell!.Windows()).Cast<object>().ToList(); }
+        catch (Exception)
+        {
+            _shell = null;   // Explorer restarted or hung: recreate the Shell object next time
+            return null;
+        }
+        foreach (object window in windows)
         {
             try
             {

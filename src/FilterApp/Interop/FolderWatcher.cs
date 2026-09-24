@@ -25,11 +25,16 @@ public sealed class FolderWatcher : IDisposable
 
     void OnForeground(IntPtr hook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint thread, uint time)
     {
-        if (ExplorerPath.IsExplorer(hwnd)) _lastExplorer = hwnd;
-        else if (_lastExplorer == IntPtr.Zero || !IsWindow(_lastExplorer)) return;
+        // Called from native code: nothing may escape, or the process dies.
+        try
+        {
+            if (ExplorerPath.IsExplorer(hwnd)) _lastExplorer = hwnd;
+            else if (_lastExplorer == IntPtr.Zero || !IsWindow(_lastExplorer)) return;
 
-        var path = ExplorerPath.TryGet(_lastExplorer);
-        if (path is not null) FolderActivated?.Invoke(path);
+            var path = ExplorerPath.TryGet(_lastExplorer);
+            if (path is not null) FolderActivated?.Invoke(path);
+        }
+        catch (Exception) { }
     }
 
     public void Dispose()

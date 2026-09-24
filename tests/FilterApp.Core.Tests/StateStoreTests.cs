@@ -52,6 +52,15 @@ public sealed class StateStoreTests : IDisposable
     }
 
     [Fact]
+    public void Null_card_entries_are_dropped_and_null_names_become_empty()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(StatePath)!);
+        File.WriteAllText(StatePath, """{ "Cards": [null, { "Name": null }, { "Name": "A" }] }""");
+        var cards = StateStore.Load(StatePath).Cards;
+        Assert.Equal(["", "A"], cards.Select(c => c.Name));
+    }
+
+    [Fact]
     public void Null_cards_in_file_become_empty_list()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(StatePath)!);

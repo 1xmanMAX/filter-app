@@ -24,6 +24,7 @@ public sealed class AppState
     public string? Destination { get; set; }
     public bool Locked { get; set; }
     public bool Holding { get; set; }
+    public DateTime? LastUsed { get; set; }
 }
 
 public static class StateStore

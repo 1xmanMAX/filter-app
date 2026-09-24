@@ -1,6 +1,24 @@
+using System.Globalization;
+
 namespace FilterApp.Core;
 
-public sealed record SessionInfo(string Id, string Name, int Filled, int Total, DateTime LastUsed);
+public sealed record SessionInfo(string Id, string Name, int Filled, int Total, DateTime LastUsed)
+{
+    public bool IsComplete => Total > 0 && Filled == Total;
+
+    static readonly string[] Months = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+    /// "hoy", "ayer", "hace 3 días", "5 sep" or "5 sep 2025".
+    public static string WhenText(DateTime when, DateTime now)
+    {
+        int days = (now.Date - when.Date).Days;
+        if (days <= 0) return "hoy";
+        if (days == 1) return "ayer";
+        if (days < 7) return $"hace {days} días";
+        var text = $"{when.Day.ToString(CultureInfo.InvariantCulture)} {Months[when.Month - 1]}";
+        return when.Year == now.Year ? text : $"{text} {when.Year}";
+    }
+}
 
 /// Named sessions, one JSON file each under &lt;root&gt;/sessions, plus which one is open.
 public sealed class SessionStore(string root)
@@ -41,7 +59,7 @@ public sealed class SessionStore(string root)
                 var state = StateStore.Load(path);
                 return new SessionInfo(Path.GetFileNameWithoutExtension(path), state.Name,
                                        state.Cards.Count(c => c.DestPath is not null), state.Cards.Count,
-                                       File.GetLastWriteTime(path));
+                                       state.LastUsed ?? File.GetLastWriteTime(path));
             })
             .OrderByDescending(s => s.LastUsed)
             .ToList();
@@ -49,7 +67,12 @@ public sealed class SessionStore(string root)
 
     public AppState Load(string id) => StateStore.Load(FileOf(id));
 
-    public void Save(string id, AppState state) => StateStore.Save(FileOf(id), state);
+    /// Saves a session; <paramref name="touch"/> marks it as used now.
+    public void Save(string id, AppState state, bool touch = true)
+    {
+        if (touch) state.LastUsed = DateTime.Now;
+        StateStore.Save(FileOf(id), state);
+    }
 
     public string Create(string name, AppState? state = null)
     {
@@ -58,6 +81,14 @@ public sealed class SessionStore(string root)
         state.Name = name;
         Save(id, state);
         return id;
+    }
+
+    /// Renaming is not "using" a session: its place in the list stays the same.
+    public void Rename(string id, string name)
+    {
+        var state = Load(id);
+        state.Name = name;
+        Save(id, state, touch: false);
     }
 
     public void Delete(string id)

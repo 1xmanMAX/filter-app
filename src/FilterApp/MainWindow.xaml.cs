@@ -28,6 +28,7 @@ public partial class MainWindow : Window
         _board = board;
         _sessions = sessions;
         _sessionId = sessionId;
+        WireSessionsPanel();
         DataContext = board;
         _watcher.FolderActivated += _board.OnExplorerFolder;
 
@@ -77,41 +78,28 @@ public partial class MainWindow : Window
 
     // ---- Sessions ----
 
+    void WireSessionsPanel()
+    {
+        Sessions.OpenRequested += id => { SessionsPopup.IsOpen = false; SwitchTo(id); };
+        Sessions.CreateRequested += name => { SessionsPopup.IsOpen = false; NewSession(name); };
+        Sessions.RenameRequested += id => { SessionsPopup.IsOpen = false; RenameSession(id); };
+        Sessions.DeleteRequested += id => { SessionsPopup.IsOpen = false; DeleteSession(id); };
+        Sessions.CloseRequested += () => SessionsPopup.IsOpen = false;
+        // Left-aligned under the button. Placement="Bottom" would follow the Windows "handedness" setting
+        // and open the panel to the left of the button on many PCs.
+        SessionsPopup.CustomPopupPlacementCallback = (_, target, _) =>
+            [new CustomPopupPlacement(new Point(-10, target.Height), PopupPrimaryAxis.Horizontal)];
+    }
+
     void OnSessionMenu(object sender, RoutedEventArgs e)
     {
         Save();   // so the list shows this session's latest progress
-        var menu = new ContextMenu { PlacementTarget = SessionButton, Placement = PlacementMode.Bottom };
-        foreach (var session in _sessions.List())
-        {
-            var item = new MenuItem
-            {
-                Header = session.Name,
-                InputGestureText = $"{session.Filled}/{session.Total}",
-                IsChecked = session.Id == _sessionId,
-            };
-            var id = session.Id;
-            item.Click += (_, _) => SwitchTo(id);
-            menu.Items.Add(item);
-        }
-        menu.Items.Add(new Separator());
-        menu.Items.Add(MenuAction("Nueva sesión…", "", OnNewSession));
-        menu.Items.Add(MenuAction("Renombrar…", "", OnRenameSession));
-        menu.Items.Add(MenuAction("Eliminar esta sesión", "", OnDeleteSession));
-        menu.IsOpen = true;
+        var now = DateTime.Now;
+        Sessions.Show(_sessions.List().Select(s => SessionRow.From(s, _sessionId, now)));
+        SessionsPopup.IsOpen = true;
     }
 
-    static MenuItem MenuAction(string text, string glyph, Action action)
-    {
-        var item = new MenuItem
-        {
-            Header = text,
-            Icon = new TextBlock { Text = glyph, FontFamily = (System.Windows.Media.FontFamily)Application.Current.Resources["IconFont"] },
-        };
-        item.Click += (_, _) => action();
-        return item;
-    }
-
-    /// Saves the open session and loads another. Refused while copying.
+    /// Saves the open session before loading another. Refused while copying.
     bool CanLeaveSession()
     {
         if (_board.IsCopying)
@@ -142,38 +130,56 @@ public partial class MainWindow : Window
         ShowToast($"Sesión «{_board.Name}» abierta.");
     }
 
-    void OnNewSession()
+    void NewSession(string name)
     {
-        var dialog = new PromptDialog("Nueva sesión", "Nombre de la nueva sesión:", "Crear") { Owner = this };
-        if (dialog.ShowDialog() != true || !CanLeaveSession()) return;
+        if (!CanLeaveSession()) return;
         // The destination carries over: a new list usually goes to the folder already open.
         var state = new AppState { Destination = _board.Destination };
-        Open(_sessions.Create(dialog.Value, state), state);
-        ShowToast($"Sesión «{dialog.Value}» creada. La anterior quedó guardada.");
+        Open(_sessions.Create(name, state), state);
+        ShowToast($"Sesión «{name}» creada. La anterior quedó guardada.");
     }
 
-    void OnRenameSession()
+    string NameOf(string id) => id == _sessionId ? _board.Name : _sessions.Load(id).Name;
+
+    void RenameSession(string id)
     {
-        var dialog = new PromptDialog("Renombrar sesión", "Nuevo nombre:", "Guardar", _board.Name) { Owner = this };
-        if (dialog.ShowDialog() == true) _board.Name = dialog.Value;
+        var dialog = new PromptDialog("Renombrar sesión", "Nuevo nombre:", "Guardar", NameOf(id)) { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+        if (id == _sessionId)
+        {
+            _board.Name = dialog.Value;   // saved with the board
+            return;
+        }
+        try { _sessions.Rename(id, dialog.Value); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            ShowToast($"No se pudo renombrar la sesión: {e.Message}");
+        }
     }
 
-    void OnDeleteSession()
+    void DeleteSession(string id)
     {
-        if (_board.IsCopying)
+        bool isOpen = id == _sessionId;
+        if (isOpen && _board.IsCopying)
         {
             ShowToast("Espera a que termine la copia.");
             return;
         }
+        var name = NameOf(id);
         if (MessageBox.Show(this,
-                $"¿Eliminar la sesión «{_board.Name}»?\n\nSolo se borra la lista de tarjetas; los archivos ya copiados no se tocan.",
+                $"¿Eliminar la sesión «{name}»?\n\nSolo se borra la lista de tarjetas; los archivos ya copiados no se tocan.",
                 "Filter App", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
 
-        _saveTimer.Stop();
-        try { _sessions.Delete(_sessionId); }
+        if (isOpen) _saveTimer.Stop();   // a pending save would bring the deleted file back
+        try { _sessions.Delete(id); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             ShowToast($"No se pudo eliminar la sesión: {e.Message}");
+            return;
+        }
+        if (!isOpen)
+        {
+            ShowToast($"Sesión «{name}» eliminada.");
             return;
         }
         var next = _sessions.List().FirstOrDefault();

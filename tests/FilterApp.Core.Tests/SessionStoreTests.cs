@@ -85,6 +85,57 @@ public sealed class SessionStoreTests : IDisposable
     }
 
     [Fact]
+    public void Rename_changes_name_but_not_last_used()
+    {
+        var store = NewStore();
+        var id = store.Create("Viejo", WithCards("", filled: 1, free: 1));
+        var before = store.List().Single().LastUsed;
+
+        store.Rename(id, "Nuevo");
+
+        var info = store.List().Single();
+        Assert.Equal("Nuevo", info.Name);
+        Assert.Equal(before, info.LastUsed);
+        Assert.Equal(2, store.Load(id).Cards.Count);
+    }
+
+    [Fact]
+    public void List_orders_by_last_use_and_flags_complete_sessions()
+    {
+        var store = NewStore();
+        var old = store.Create("Vieja", WithCards("", filled: 2, free: 0));
+        var recent = store.Create("Reciente", WithCards("", filled: 1, free: 1));
+        var oldState = store.Load(old);
+        oldState.LastUsed = DateTime.Now.AddDays(-3);
+        store.Save(old, oldState, touch: false);
+
+        var list = store.List();
+
+        Assert.Equal([recent, old], list.Select(s => s.Id));
+        Assert.True(list[1].IsComplete);
+        Assert.False(list[0].IsComplete);
+        Assert.False(new SessionInfo("x", "Vacía", 0, 0, DateTime.Now).IsComplete);
+    }
+
+    [Theory]
+    [InlineData(0, "hoy")]
+    [InlineData(1, "ayer")]
+    [InlineData(4, "hace 4 días")]
+    public void When_text_is_relative_for_recent_days(int daysAgo, string expected)
+    {
+        var now = new DateTime(2026, 9, 23, 10, 0, 0);
+        Assert.Equal(expected, SessionInfo.WhenText(now.AddDays(-daysAgo).AddHours(-1), now));
+    }
+
+    [Fact]
+    public void When_text_shows_the_date_for_older_days()
+    {
+        var now = new DateTime(2026, 9, 23, 10, 0, 0);
+        Assert.Equal("5 sep", SessionInfo.WhenText(new DateTime(2026, 9, 5), now));
+        Assert.Equal("5 sep 2025", SessionInfo.WhenText(new DateTime(2025, 9, 5), now));
+    }
+
+    [Fact]
     public void Delete_removes_only_that_session()
     {
         var store = NewStore();

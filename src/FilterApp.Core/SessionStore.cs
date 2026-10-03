@@ -58,7 +58,7 @@ public sealed class SessionStore(string root)
             {
                 var state = StateStore.Load(path);
                 return new SessionInfo(Path.GetFileNameWithoutExtension(path), state.Name,
-                                       state.Cards.Count(c => c.DestPath is not null), state.Cards.Count,
+                                       state.AllNames().Count(c => c.DestPath is not null), state.AllNames().Count(),
                                        state.LastUsed ?? File.GetLastWriteTime(path));
             })
             .OrderByDescending(s => s.LastUsed)

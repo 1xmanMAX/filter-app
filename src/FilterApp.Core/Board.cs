@@ -307,6 +307,120 @@ public sealed class Board : Observable
         HeldChanged();
     }
 
+    // ---- Sorting what is already placed ----
+
+    /// Moves a file already placed in a folder (or waiting there in hold mode) somewhere else in the tree:
+    /// into <paramref name="target"/> keeping its name (or as <paramref name="newName"/>), or onto the free named
+    /// card <paramref name="into"/>, taking that name. On disk the file is moved inside the destination, which is
+    /// instant. Ctrl+Z afterwards still sends it back to where it originally came from.
+    public async Task<bool> RelocateAsync(CardViewModel file, FolderViewModel target, CardViewModel? into = null, string? newName = null)
+    {
+        if (into is { Status: not CardStatus.Free })
+        {
+            Notified?.Invoke($"«{into.Name}» ya tiene un archivo.");
+            return false;
+        }
+        if (file == into) return false;
+
+        if (file.Status == CardStatus.Held && file.HeldItem is { } item)
+        {
+            // Nothing is on disk yet: the waiting file just changes place.
+            Detach(file);
+            var held = into ?? AddAuto(target, newName ?? Path.GetFileNameWithoutExtension(item.DisplayName));
+            held.Hold(item);
+            HeldChanged();
+            return true;
+        }
+        if (file.Status != CardStatus.Filled || file.DestPath is not { } from) return false;
+        if (Destination is not { } dest || !Directory.Exists(dest)) return Say(NoDestination);
+
+        var folder = into?.Folder ?? target;
+        var name = into?.Name ?? newName ?? Path.GetFileNameWithoutExtension(from);
+        string path;
+        file.Status = CardStatus.Copying;
+        try
+        {
+            path = (await Transfer.RunAsync(from, folder.DirIn(dest), name, move: true)).DestPath;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            file.Status = CardStatus.Filled;
+            return Say($"No se pudo mover «{file.FileName}»: {e.Message}");
+        }
+        file.Status = CardStatus.Filled;
+        var original = file.OriginalName ?? "";
+        var movedFrom = file.MovedFrom;
+        Detach(file);
+        var card = into ?? AddAuto(target, Path.GetFileNameWithoutExtension(path));
+        card.Fill(path, original, movedFrom);
+        _history.Add(card);
+        Notify(nameof(CanUndo));
+        Changed?.Invoke();
+        return true;
+    }
+
+    /// Renames a file placed in a folder, in the same folder. Returns false if that was not possible.
+    public Task<bool> RenameFileAsync(CardViewModel file, string newName)
+    {
+        newName = newName.Trim();
+        if (newName.Length == 0 || file.Folder is not { } folder || !file.IsAuto) return Task.FromResult(false);
+        return RelocateAsync(file, folder, newName: newName);
+    }
+
+    /// Several placed files into one folder. Returns how many moved.
+    public async Task<int> RelocateManyAsync(IReadOnlyList<CardViewModel> files, FolderViewModel target, Action<int, int>? progress = null)
+    {
+        int moved = 0, done = 0;
+        foreach (var file in files)
+        {
+            if (file.Folder != target || !file.IsAuto)
+                if (await RelocateAsync(file, target)) moved++;
+            progress?.Invoke(++done, files.Count);
+        }
+        return moved;
+    }
+
+    /// Like <see cref="SendToPathAsync"/>, for a file already placed: "Juan/DNI" moves it to Juan named DNI.
+    public async Task<bool> RelocateToPathAsync(CardViewModel file, FolderViewModel from, string path)
+    {
+        bool keepName = path.TrimEnd().EndsWith('/') || path.TrimEnd().EndsWith('\\');
+        var parts = path.Split('/', '\\').Select(p => p.Trim()).Where(p => p.Length > 0).ToList();
+        if (parts.Count == 0) return false;
+        var folder = from.GetOrAddPath(string.Join('/', keepName ? parts : parts[..^1]));
+        Changed?.Invoke();
+        if (keepName) return await RelocateAsync(file, folder);
+        var name = parts[^1];
+        var card = folder.Cards.FirstOrDefault(c => c.Status == CardStatus.Free &&
+                                                    string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (card is null)
+        {
+            card = new CardViewModel(name);
+            folder.Cards.Add(card);
+        }
+        return await RelocateAsync(file, folder, into: card);
+    }
+
+    static CardViewModel AddAuto(FolderViewModel folder, string name)
+    {
+        var card = new CardViewModel(name) { IsAuto = true };
+        folder.Files.Add(card);
+        return card;
+    }
+
+    /// Takes a file off its card: a file entry goes away, a named card stays as a free name.
+    void Detach(CardViewModel card)
+    {
+        card.Clear();
+        RemoveIfAuto(card);
+        _history.Remove(card);
+    }
+
+    bool Say(string message)
+    {
+        Notified?.Invoke(message);
+        return false;
+    }
+
     // ---- Undo ----
 
     /// Copied: deletes the copy. Moved: puts the file back where it was and in the tray.

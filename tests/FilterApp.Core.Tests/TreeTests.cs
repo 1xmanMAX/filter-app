@@ -210,6 +210,101 @@ public sealed class TreeTests : IDisposable
         Assert.True(File.Exists(Path.Combine(b.Destination!, "Fotos", "foto.jpg")));
     }
 
+    // ---- Sorting inside a folder ----
+
+    [Fact]
+    public async Task Files_dropped_in_a_folder_can_then_go_into_a_subfolder()
+    {
+        var b = NewBoard();
+        var docs = b.AddFolder(b.Root, "Documentos");
+        var facturas = b.AddFolder(docs, "Facturas");
+        await b.PlaceManyAsync([Source("a.pdf", "A"), Source("b.pdf", "B")], docs);
+
+        Assert.Equal(1, await b.RelocateManyAsync([docs.Files[0]], facturas));
+
+        Assert.Equal(["b.pdf"], docs.Files.Select(f => f.FileName));
+        Assert.Equal(["a.pdf"], facturas.Files.Select(f => f.FileName));
+        Assert.Equal("A", File.ReadAllText(Path.Combine(b.Destination!, "Documentos", "Facturas", "a.pdf")));
+        Assert.False(File.Exists(Path.Combine(b.Destination!, "Documentos", "a.pdf")));
+    }
+
+    [Fact]
+    public async Task A_placed_file_dropped_on_a_name_takes_that_name()
+    {
+        var b = NewBoard();
+        var docs = b.AddFolder(b.Root, "Docs");
+        b.AddNames("Juan/\n  DNI", docs);
+        await b.PlaceAsync(Source("scan001.pdf"), docs);
+        var dni = docs.FindFolder("Juan")!.Cards[0];
+
+        Assert.True(await b.RelocateAsync(docs.Files[0], dni.Folder!, into: dni));
+
+        Assert.Empty(docs.Files);
+        Assert.Equal(Path.Combine(b.Destination!, "Docs", "Juan", "DNI.pdf"), dni.DestPath);
+        Assert.Equal("scan001.pdf", dni.OriginalName);
+    }
+
+    [Fact]
+    public async Task Rename_in_place_keeps_the_extension_and_never_overwrites()
+    {
+        var b = NewBoard();
+        var docs = b.AddFolder(b.Root, "Docs");
+        await b.PlaceManyAsync([Source("x/scan1.jpg"), Source("y/scan2.jpg"), Source("z/Recibo.jpg")], docs);
+
+        Assert.True(await b.RenameFileAsync(docs.Files[0], "Recibo"));
+
+        Assert.Contains("Recibo (2).jpg", docs.Files.Select(f => f.FileName));
+        Assert.True(File.Exists(Path.Combine(b.Destination!, "Docs", "Recibo (2).jpg")));
+        Assert.False(File.Exists(Path.Combine(b.Destination!, "Docs", "scan1.jpg")));
+    }
+
+    [Fact]
+    public async Task Undo_after_sorting_a_moved_file_sends_it_back_to_its_origin()
+    {
+        var b = NewBoard();
+        b.Move = true;
+        var docs = b.AddFolder(b.Root, "Docs");
+        var sub = b.AddFolder(docs, "Sub");
+        var item = Source("orig/a.txt", "data");
+        await b.PlaceAsync(item, docs);
+        await b.RelocateAsync(docs.Files[0], sub);
+
+        b.UndoLast();
+
+        Assert.Equal("data", File.ReadAllText(item.SourcePath));
+        Assert.Empty(sub.Files);
+        Assert.Empty(Directory.EnumerateFiles(b.Destination!, "*", SearchOption.AllDirectories));
+    }
+
+    [Fact]
+    public async Task A_held_file_changes_folder_without_touching_disk()
+    {
+        var b = NewBoard();
+        b.Holding = true;
+        var docs = b.AddFolder(b.Root, "Docs");
+        var sub = b.AddFolder(docs, "Sub");
+        await b.PlaceAsync(Source("a.txt"), docs);
+
+        Assert.True(await b.RelocateAsync(docs.Files[0], sub));
+
+        Assert.Empty(docs.Files);
+        Assert.Equal(CardStatus.Held, sub.Files[0].Status);
+        Assert.Empty(Directory.EnumerateFiles(b.Destination!, "*", SearchOption.AllDirectories));
+    }
+
+    [Fact]
+    public async Task Relocate_to_path_creates_what_is_missing()
+    {
+        var b = NewBoard();
+        var docs = b.AddFolder(b.Root, "Docs");
+        await b.PlaceAsync(Source("a.pdf"), docs);
+
+        Assert.True(await b.RelocateToPathAsync(docs.Files[0], docs, "2026/Marzo/Factura"));
+
+        var card = docs.FindFolder("2026")!.FindFolder("Marzo")!.Cards.Single();
+        Assert.Equal(Path.Combine(b.Destination!, "Docs", "2026", "Marzo", "Factura.pdf"), card.DestPath);
+    }
+
     // ---- Moving ----
 
     [Fact]

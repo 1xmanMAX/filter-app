@@ -59,6 +59,15 @@ public sealed class NewTile(bool isFolder) : FilterApp.Core.Observable
     public IReadOnlyList<PendingItem>? Waiting { get; private set; }
     /// The waiting files came from a dropped folder and keep its subfolders.
     public bool KeepFolders { get; private set; }
+    /// Files already placed in the tree, dropped on the tile to go into the new folder (or take the new name).
+    public IReadOnlyList<CardViewModel>? WaitingPlaced { get; private set; }
+
+    public void StartWithPlaced(IReadOnlyList<CardViewModel> files)
+    {
+        Start(files.Select(f => new PendingItem(f.PreviewPath ?? "", f.FileName ?? "", false)).ToList());
+        Waiting = null;
+        WaitingPlaced = files;
+    }
 
     public void Start(IReadOnlyList<PendingItem>? waiting = null, bool keepFolders = false)
     {
@@ -78,6 +87,7 @@ public sealed class NewTile(bool isFolder) : FilterApp.Core.Observable
     public void Stop()
     {
         Waiting = null;
+        WaitingPlaced = null;
         KeepFolders = false;
         Text = "";
         IsEditing = false;

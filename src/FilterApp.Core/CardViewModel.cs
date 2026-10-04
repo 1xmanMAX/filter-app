@@ -10,6 +10,7 @@ public sealed class CardViewModel(string name) : Observable
     string? _movedFrom;
     PendingItem? _heldItem;
     bool _isDragTarget;
+    bool _isEditing;
 
     public string Name { get; } = name;
     /// The folder of the tree this card lives in (set when it is added to one).
@@ -25,6 +26,8 @@ public sealed class CardViewModel(string name) : Observable
     public PendingItem? HeldItem { get => _heldItem; private set => Set(ref _heldItem, value); }
     /// UI-only: a file is being dragged over this card.
     public bool IsDragTarget { get => _isDragTarget; set => Set(ref _isDragTarget, value); }
+    /// UI-only: its name is being edited in place.
+    public bool IsEditing { get => _isEditing; set => Set(ref _isEditing, value); }
     /// The file on this card, as shown in lists.
     public string? FileName => DestPath is not null ? Path.GetFileName(DestPath) : HeldItem?.DisplayName;
     /// The file to show in the preview: the placed copy, or the held original.

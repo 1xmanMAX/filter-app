@@ -115,6 +115,7 @@ Para reorganizar discos completos:
 - **Clic en una carpeta** para entrar. La ruta de arriba (`Destino › Clientes › Juan`) te lleva de vuelta.
 - **Suelta archivos en una carpeta**: entran con su nombre. **Mantenlos encima** y la carpeta se abre para ir más adentro.
 - **Suelta una carpeta del Explorador sobre una carpeta**: entra entera, con sus subcarpetas.
+- **Las carpetas son un primer filtro:** suelta todo en «Documentos», entra y desde ahí reparte. En **Archivos en esta carpeta** puedes arrastrar los archivos (uno o varios con Ctrl/Shift) a una subcarpeta, a un nombre (toman ese nombre), a «＋ Nueva carpeta» o a la ruta de arriba para subirlos de nivel. **F2** o ✏️ los renombra ahí mismo, y con el teclado basta escribir el destino y pulsar Enter.
 - **Varios a la vez**: Ctrl o Shift + clic en Pendientes y arrastra.
 
 ### Con el teclado ⌨️

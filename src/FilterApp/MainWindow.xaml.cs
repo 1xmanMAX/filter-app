@@ -427,6 +427,7 @@ public partial class MainWindow : Window
     {
         // The one just clicked or arrowed to, also inside a multi-selection.
         var item = e.AddedItems.OfType<PendingItem>().LastOrDefault() ?? PendingList.SelectedItem as PendingItem;
+        if (e.AddedItems.Count > 0) _filesActive = false;
         if (PreviewToggle.IsChecked == true) Preview.Show(item?.SourcePath);
     }
 
@@ -450,8 +451,10 @@ public partial class MainWindow : Window
 
     protected override void OnPreviewTextInput(TextCompositionEventArgs e)
     {
-        // Typing while the tray has focus goes to the quick bar: select a file, type where it goes, Enter.
-        if (PendingList.IsKeyboardFocusWithin && e.Text.Length > 0 && !char.IsControl(e.Text[0]))
+        // Typing while the tray (or a folder's file list) has focus goes to the quick bar: select a file,
+        // type where it goes, Enter.
+        bool list = PendingList.IsKeyboardFocusWithin || (FileList.IsKeyboardFocusWithin && Keyboard.FocusedElement is not TextBox);
+        if (list && e.Text.Length > 0 && !char.IsControl(e.Text[0]))
         {
             QuickBox.Focus();
             QuickBox.Text += e.Text;
@@ -519,7 +522,11 @@ public partial class MainWindow : Window
 
     static PendingItem[]? Dragged(DragEventArgs e) => e.Data.GetData(typeof(PendingItem[])) as PendingItem[];
 
-    static bool HasFiles(DragEventArgs e) => e.Data.GetDataPresent(typeof(PendingItem[])) || FileIntake.CanAccept(e.Data);
+    /// Files already placed in the tree, dragged from a folder's list.
+    static CardViewModel[]? Placed(DragEventArgs e) => e.Data.GetData(typeof(CardViewModel[])) as CardViewModel[];
+
+    static bool HasFiles(DragEventArgs e) =>
+        e.Data.GetDataPresent(typeof(PendingItem[])) || e.Data.GetDataPresent(typeof(CardViewModel[])) || FileIntake.CanAccept(e.Data);
 
     // ---- Placing ----
 
@@ -565,7 +572,8 @@ public partial class MainWindow : Window
 
     async Task DropOnFolderAsync(DragEventArgs e, FolderViewModel folder)
     {
-        if (Dragged(e) is { } items) await PlaceAsync(items, folder);
+        if (Placed(e) is { } placed) await RelocateAsync(placed, folder);
+        else if (Dragged(e) is { } items) await PlaceAsync(items, folder);
         else if (FileIntake.CanAccept(e.Data)) await PlaceExternalAsync(e.Data, folder);
     }
 
@@ -757,6 +765,11 @@ public partial class MainWindow : Window
         if (CardOf(sender) is not { } card) return;
         card.IsDragTarget = false;
 
+        if (Placed(e) is { } placed)
+        {
+            await RelocateAsync(placed, card.Folder ?? _current, into: card);
+            return;
+        }
         if (Dragged(e) is { } dragged)
         {
             if (dragged.Length == 1) await AssignAsync(dragged[0], card);
@@ -791,9 +804,176 @@ public partial class MainWindow : Window
         if (CardOf(sender)?.PreviewPath is { } path && PreviewToggle.IsChecked == true) Preview.Show(path);
     }
 
+    // ---- Files placed in the open folder: select, drag elsewhere, rename in place ----
+
+    Point _fileDragStart;
+    CardViewModel? _fileDragItem;
+    CardViewModel? _fileDeferred;
+    /// The quick bar and drops act on the folder's files when they were selected last (otherwise on the tray).
+    bool _filesActive;
+
+    List<CardViewModel> SelectedFiles() =>
+        FileList.SelectedItems.Cast<CardViewModel>().OrderBy(c => _current.Files.IndexOf(c)).ToList();
+
+    static CardViewModel? FileUnder(object source) =>
+        (source as FrameworkElement)?.DataContext as CardViewModel ?? (source as FrameworkContentElement)?.DataContext as CardViewModel;
+
+    static bool IsInTextBox(object source)
+    {
+        for (var d = source as DependencyObject; d is not null; d = d is Visual ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
+            if (d is TextBox) return true;
+        return false;
+    }
+
+    void OnFileSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.AddedItems.OfType<CardViewModel>().LastOrDefault() is not { } file) return;
+        _filesActive = true;
+        if (file.PreviewPath is { } path && PreviewToggle.IsChecked == true) Preview.Show(path);
+    }
+
+    void OnFileDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (!IsInTextBox(e.OriginalSource) && FileUnder(e.OriginalSource)?.PreviewPath is { } path) PreviewPane.OpenExternal(path);
+    }
+
+    void OnFileKeyDown(object sender, KeyEventArgs e)
+    {
+        if (IsInTextBox(e.OriginalSource)) return;
+        var files = SelectedFiles();
+        if (e.Key == Key.F2 && files is [var one])
+        {
+            e.Handled = true;
+            StartRename(one);
+        }
+        else if (e.Key == Key.Delete && files.Count > 0)
+        {
+            e.Handled = true;
+            foreach (var file in files)
+                if (file.Status == CardStatus.Filled) _board.Undo(file);
+                else if (file.Status == CardStatus.Held) _board.ReturnHeld(file);
+        }
+        else if (e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            QuickBox.Focus();
+        }
+    }
+
     void OnFileMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ClickCount == 2 && CardOf(sender)?.PreviewPath is { } path) PreviewPane.OpenExternal(path);
+        _fileDragStart = e.GetPosition(null);
+        _fileDragItem = IsInTextBox(e.OriginalSource) || IsInButton(e.OriginalSource) ? null : FileUnder(e.OriginalSource);
+        // Clicking inside a multi-selection would drop it before the drag starts: wait for the mouse up.
+        if (_fileDragItem is not null && FileList.SelectedItems.Count > 1 && FileList.SelectedItems.Contains(_fileDragItem) &&
+            Keyboard.Modifiers == ModifierKeys.None)
+        {
+            _fileDeferred = _fileDragItem;
+            e.Handled = true;
+        }
+    }
+
+    void OnFileMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_fileDeferred is { } file) FileList.SelectedItem = file;
+        _fileDeferred = null;
+    }
+
+    void OnFileMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_fileDragItem is null || e.LeftButton != MouseButtonState.Pressed) return;
+        var delta = e.GetPosition(null) - _fileDragStart;
+        if (Math.Abs(delta.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(delta.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+        var file = _fileDragItem;
+        _fileDragItem = null;
+        _fileDeferred = null;
+        var selected = SelectedFiles();
+        CardViewModel[] files = selected.Contains(file) ? [.. selected] : [file];
+        _filesActive = true;
+        DragDrop.DoDragDrop((DependencyObject)sender, new DataObject(typeof(CardViewModel[]), files), DragDropEffects.Move);
+        EndSpring();
+    }
+
+    void OnRenameFile(object sender, RoutedEventArgs e)
+    {
+        if (CardOf(sender) is { } file) StartRename(file);
+    }
+
+    void StartRename(CardViewModel file)
+    {
+        if (file.Status != CardStatus.Filled || !file.IsAuto) return;
+        foreach (var other in _current.Files) other.IsEditing = false;
+        file.IsEditing = true;
+    }
+
+    void OnRenameBoxShown(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (sender is not TextBox { IsVisible: true } box || box.DataContext is not CardViewModel file) return;
+        box.Text = Path.GetFileNameWithoutExtension(file.FileName ?? "");
+        Dispatcher.BeginInvoke(() => { box.Focus(); box.SelectAll(); }, DispatcherPriority.Input);
+    }
+
+    async void OnRenameKeyDown(object sender, KeyEventArgs e)
+    {
+        if (sender is not TextBox { DataContext: CardViewModel file } box) return;
+        if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            file.IsEditing = false;
+            FileList.Focus();
+        }
+        else if (e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            await CommitRenameAsync(file, box.Text);
+        }
+    }
+
+    async void OnRenameLostFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (sender is TextBox { DataContext: CardViewModel { IsEditing: true } file } box) await CommitRenameAsync(file, box.Text);
+    }
+
+    async Task CommitRenameAsync(CardViewModel file, string name)
+    {
+        file.IsEditing = false;
+        name = name.Trim();
+        if (name.Length == 0 || name == Path.GetFileNameWithoutExtension(file.FileName)) return;
+        await Preview.ReleaseAsync();   // a preview may keep the file open
+        if (await _board.RenameFileAsync(file, name) && _current.Files.LastOrDefault() is { } renamed)
+        {
+            FileList.SelectedItem = renamed;
+            FileList.Focus();
+        }
+    }
+
+    /// Placed files dragged or sent elsewhere in the tree: into a folder keeping their names, or onto a name.
+    async Task RelocateAsync(IReadOnlyList<CardViewModel> files, FolderViewModel folder, CardViewModel? into = null)
+    {
+        if (files.Count == 0) return;
+        if (into is not null && files.Count > 1)
+        {
+            ShowToast("Un nombre recibe un solo archivo. Para varios, suéltalos en una carpeta.");
+            return;
+        }
+        await Preview.ReleaseAsync();
+        _batches++;
+        try
+        {
+            if (into is not null)
+            {
+                await _board.RelocateAsync(files[0], into.Folder ?? folder, into);
+                return;
+            }
+            int moved = await _board.RelocateManyAsync(files, folder,
+                (done, total) => { if (total > 1 && done < total) ShowToast($"Moviendo {done + 1} de {total}…"); });
+            if (moved > 1) ShowToast($"{moved} archivos movidos a {(folder.IsRoot ? "el destino" : $"«{folder.Name}»")}.");
+        }
+        finally
+        {
+            _batches--;
+        }
     }
 
     async void OnRelease(object sender, RoutedEventArgs e)
@@ -867,15 +1047,17 @@ public partial class MainWindow : Window
             return;
         }
         var waiting = tile.Waiting;
+        var placed = tile.WaitingPlaced;
         bool keepFolders = tile.KeepFolders;
         var here = _current;
         if (tile.IsFolder)
         {
             _board.AddNames(name.TrimEnd('/', '\\') + "/", here);
             var folder = here.GetOrAddPath(name);
-            if (waiting is not null || open) tile.Stop();
+            if (waiting is not null || placed is not null || open) tile.Stop();
             else tile.Text = "";
             if (waiting is not null) await PlaceAsync(waiting, folder, keepFolders);
+            if (placed is not null) await RelocateAsync(placed, folder);
             if (open) Navigate(folder);
         }
         else
@@ -888,6 +1070,11 @@ public partial class MainWindow : Window
                 tile.Stop();
                 await AssignAsync(item, card);
             }
+            else if (placed is [var file])
+            {
+                tile.Stop();
+                await RelocateAsync([file], here, into: card);
+            }
             else tile.Text = "";
         }
     }
@@ -895,7 +1082,8 @@ public partial class MainWindow : Window
     void OnTileDragOver(object sender, DragEventArgs e)
     {
         var tile = TileOf(sender);
-        bool ok = tile is not null && HasFiles(e) && (tile.IsFolder || Dragged(e) is not { Length: > 1 });
+        bool ok = tile is not null && HasFiles(e) &&
+                  (tile.IsFolder || (Dragged(e) is not { Length: > 1 } && Placed(e) is not { Length: > 1 }));
         if (tile is not null) tile.IsDragTarget = ok;
         e.Effects = ok ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
@@ -913,6 +1101,13 @@ public partial class MainWindow : Window
         EndSpring();
         if (TileOf(sender) is not { } tile) return;
         tile.IsDragTarget = false;
+        if (Placed(e) is { } placedFiles)
+        {
+            if (!tile.IsFolder && placedFiles.Length > 1) return;
+            CancelTile(tile == _newFolder ? _newName : _newFolder);
+            tile.StartWithPlaced(placedFiles);
+            return;
+        }
         List<PendingItem> items;
         bool keepFolders = false;
         if (Dragged(e) is { } dragged) items = [.. dragged];
@@ -1000,6 +1195,12 @@ public partial class MainWindow : Window
     /// Enter on a result sends the selected tray files there; with nothing selected (or Shift) it goes there.
     async void Execute(QuickRow row, bool navigate)
     {
+        // Files of the open folder selected last: they are sorted from here into subfolders or names.
+        if (!navigate && _filesActive && SelectedFiles() is { Count: > 0 } files)
+        {
+            await ExecuteOnPlacedAsync(row, files);
+            return;
+        }
         var items = SelectedPending();
         bool send = !navigate && items.Count > 0;
         if (row.Hit is { } hit)
@@ -1040,6 +1241,25 @@ public partial class MainWindow : Window
         QuickBox.Focus();
     }
 
+    async Task ExecuteOnPlacedAsync(QuickRow row, IReadOnlyList<CardViewModel> files)
+    {
+        ClearQuick();
+        if (row.Hit is { Card: { } card }) await RelocateAsync(files, card.Folder ?? _current, into: card);
+        else if (row.Hit is { } hit) await RelocateAsync(files, hit.Folder);
+        else if (row.CreatePath is { } path)
+        {
+            if (files is [var one])
+            {
+                await Preview.ReleaseAsync();
+                await _board.RelocateToPathAsync(one, _current, path);
+            }
+            else await RelocateAsync(files, _current.GetOrAddPath(path));
+        }
+        // The next file left in this folder is ready to be sent on.
+        if (_current.Files.Count > 0 && FileList.SelectedItem is null) FileList.SelectedIndex = 0;
+        QuickBox.Focus();
+    }
+
     async Task SendToPathAsync(PendingItem item, string path)
     {
         int index = _board.Pending.IndexOf(item);
@@ -1050,14 +1270,22 @@ public partial class MainWindow : Window
     // Dropping on a result row.
     void OnResultDragOver(object sender, DragEventArgs e)
     {
-        e.Effects = e.Data.GetDataPresent(typeof(PendingItem[])) ? DragDropEffects.Copy : DragDropEffects.None;
+        bool ok = e.Data.GetDataPresent(typeof(PendingItem[])) || e.Data.GetDataPresent(typeof(CardViewModel[]));
+        e.Effects = ok ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
     }
 
-    void OnResultDrop(object sender, DragEventArgs e)
+    async void OnResultDrop(object sender, DragEventArgs e)
     {
         e.Handled = true;
-        if ((sender as FrameworkElement)?.DataContext is not QuickRow row || Dragged(e) is not { } items) return;
+        if ((sender as FrameworkElement)?.DataContext is not QuickRow row) return;
+        if (Placed(e) is { } placed)
+        {
+            await ExecuteOnPlacedAsync(row, placed);
+            return;
+        }
+        if (Dragged(e) is not { } items) return;
+        _filesActive = false;
         PendingList.SelectedItems.Clear();
         foreach (var item in items) PendingList.SelectedItems.Add(item);
         Execute(row, navigate: false);

@@ -415,7 +415,7 @@
                 </ItemsControl.Resources>
               </ItemsControl>
 
-              <!-- Files dropped on this folder, with their own names -->
+              <!-- Files dropped on this folder, with their own names: select, drag to a subfolder or name, F2 renames -->
               <StackPanel Margin="0,4,10,0">
                 <StackPanel.Style>
                   <Style TargetType="StackPanel">
@@ -426,45 +426,63 @@
                     </Style.Triggers>
                   </Style>
                 </StackPanel.Style>
-                <TextBlock Margin="2,0,0,6" FontSize="11" FontWeight="SemiBold" Foreground="#57606A">
-                  <Run Text="ARCHIVOS EN ESTA CARPETA ("/><Run Text="{Binding Files.Count, Mode=OneWay}"/><Run Text=")"/>
-                </TextBlock>
+                <DockPanel Margin="2,0,0,6">
+                  <TextBlock DockPanel.Dock="Right" FontSize="11" Foreground="#8C959F" VerticalAlignment="Center"
+                             Text="Arrástralos a una subcarpeta o nombre · F2 renombra · Ctrl/Shift para varios"/>
+                  <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="#57606A" VerticalAlignment="Center">
+                    <Run Text="ARCHIVOS EN ESTA CARPETA ("/><Run Text="{Binding Files.Count, Mode=OneWay}"/><Run Text=")"/>
+                  </TextBlock>
+                </DockPanel>
                 <Border Background="White" CornerRadius="8" BorderBrush="#D0D7DE" BorderThickness="1" Padding="4">
-                  <ItemsControl ItemsSource="{Binding Files}">
-                    <ItemsControl.ItemTemplate>
+                  <ListBox x:Name="FileList" ItemsSource="{Binding Files}" SelectionMode="Extended" BorderThickness="0"
+                           Background="Transparent" HorizontalContentAlignment="Stretch"
+                           SelectionChanged="OnFileSelectionChanged" KeyDown="OnFileKeyDown" MouseDoubleClick="OnFileDoubleClick"
+                           PreviewMouseLeftButtonDown="OnFileMouseDown" PreviewMouseLeftButtonUp="OnFileMouseUp"
+                           PreviewMouseMove="OnFileMouseMove">
+                    <ListBox.Template>
+                      <!-- No scroll viewer of its own: the folder view scrolls as a whole -->
+                      <ControlTemplate TargetType="ListBox"><ItemsPresenter/></ControlTemplate>
+                    </ListBox.Template>
+                    <ListBox.ItemTemplate>
                       <DataTemplate DataType="{x:Type core:CardViewModel}">
-                        <Border x:Name="Row" Padding="8,3" CornerRadius="4" Background="Transparent" Cursor="Hand"
-                                MouseLeftButtonUp="OnCardClick" MouseLeftButtonDown="OnFileMouseDown">
-                          <DockPanel>
-                            <Button x:Name="Action" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;"
-                                    ToolTip="Deshacer: quita el archivo de aquí" Click="OnCardAction"/>
-                            <TextBlock x:Name="Icon" DockPanel.Dock="Left" Text="&#xE73E;" FontFamily="{StaticResource IconFont}"
-                                       Foreground="#1A7F37" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                            <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                                       ToolTip="{Binding PreviewPath}"/>
-                          </DockPanel>
-                        </Border>
+                        <DockPanel Margin="2,1" Cursor="SizeAll" Background="Transparent">
+                          <Button x:Name="Action" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;"
+                                  ToolTip="Deshacer: quita el archivo de aquí" Click="OnCardAction"/>
+                          <Button x:Name="RenameButton" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE70F;"
+                                  ToolTip="Renombrar (F2)" Click="OnRenameFile"/>
+                          <TextBlock x:Name="Icon" DockPanel.Dock="Left" Text="&#xE73E;" FontFamily="{StaticResource IconFont}"
+                                     Foreground="#1A7F37" VerticalAlignment="Center" Margin="4,0,8,0"/>
+                          <Grid>
+                            <TextBlock x:Name="NameText" Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
+                                       VerticalAlignment="Center" ToolTip="{Binding PreviewPath}"/>
+                            <TextBox x:Name="NameBox" Visibility="Collapsed" Padding="2,1" Cursor="IBeam"
+                                     PreviewKeyDown="OnRenameKeyDown" LostKeyboardFocus="OnRenameLostFocus"
+                                     IsVisibleChanged="OnRenameBoxShown"/>
+                          </Grid>
+                        </DockPanel>
                         <DataTemplate.Triggers>
+                          <DataTrigger Binding="{Binding IsEditing}" Value="True">
+                            <Setter TargetName="NameText" Property="Visibility" Value="Collapsed"/>
+                            <Setter TargetName="NameBox" Property="Visibility" Value="Visible"/>
+                          </DataTrigger>
                           <DataTrigger Binding="{Binding Status}" Value="Held">
                             <Setter TargetName="Icon" Property="Text" Value="&#xE769;"/>
                             <Setter TargetName="Icon" Property="Foreground" Value="#8250DF"/>
                             <Setter TargetName="Action" Property="ToolTip" Value="Devolver a Pendientes"/>
+                            <Setter TargetName="RenameButton" Property="Visibility" Value="Collapsed"/>
                           </DataTrigger>
                           <DataTrigger Binding="{Binding Status}" Value="Copying">
                             <Setter TargetName="Icon" Property="Text" Value="&#xE895;"/>
                             <Setter TargetName="Icon" Property="Foreground" Value="#9A6700"/>
                             <Setter TargetName="Action" Property="Visibility" Value="Hidden"/>
+                            <Setter TargetName="RenameButton" Property="Visibility" Value="Hidden"/>
                           </DataTrigger>
-                          <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Row" Property="Background" Value="#F6F8FA"/>
-                          </Trigger>
                         </DataTemplate.Triggers>
                       </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
                 </Border>
               </StackPanel>
-
               <TextBlock x:Name="EmptyHint" Margin="4,24,4,0" TextWrapping="Wrap" Foreground="#8C959F" TextAlignment="Center"
                          Text="Carpeta vacía: usa «+ Nueva carpeta» y «+ Nuevo nombre», o suelta archivos aquí.">
                 <TextBlock.Style>

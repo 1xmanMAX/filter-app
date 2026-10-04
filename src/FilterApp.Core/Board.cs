@@ -93,7 +93,9 @@ public sealed class Board : Observable
     public bool IsCopying => AllCards().Any(c => c.Status == CardStatus.Copying);
     /// Files that live only in the app's temp folder (pasted images, Outlook attachments) and are not saved.
     public int UnsavedCount => WaitingItems().Count(p => p.IsTemp);
-    public bool CanUndo => _history.Any(c => c.Status == CardStatus.Filled);
+    public bool CanUndo => LastPlaced is not null;
+    /// What Ctrl+Z would undo: the most recent placement that is still there.
+    public CardViewModel? LastPlaced => _history.LastOrDefault(c => c.Status == CardStatus.Filled);
 
     public IEnumerable<CardViewModel> AllCards() => Root.AllCards();
 
@@ -349,7 +351,7 @@ public sealed class Board : Observable
     /// Undoes the most recent placement that is still there. Returns its card, or null if nothing to undo.
     public CardViewModel? UndoLast()
     {
-        var card = _history.LastOrDefault(c => c.Status == CardStatus.Filled);
+        var card = LastPlaced;
         if (card is not null) Undo(card);
         return card;
     }

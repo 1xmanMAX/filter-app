@@ -95,5 +95,60 @@
         </Trigger>
       </Style.Triggers>
     </Style>
+    <!-- Toggle with an icon (Tag) and a label (Content) -->
+    <Style x:Key="PillToggle" TargetType="ToggleButton">
+      <Setter Property="Background" Value="#F6F8FA"/>
+      <Setter Property="Foreground" Value="#57606A"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ToggleButton">
+            <Border Height="34" Padding="10,0" CornerRadius="6" Background="{TemplateBinding Background}">
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{TemplateBinding Tag}" FontFamily="{StaticResource IconFont}" FontSize="14"
+                           VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <ContentPresenter VerticalAlignment="Center"/>
+              </StackPanel>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="MoveToggle" TargetType="ToggleButton" BasedOn="{StaticResource PillToggle}">
+      <Setter Property="Tag" Value="&#xE8C8;"/>
+      <Setter Property="Content" Value="Copiar"/>
+      <Setter Property="ToolTip" Value="Copiar: el original se queda donde está. Clic para MOVER (reorganizar sin duplicar)."/>
+      <Style.Triggers>
+        <Trigger Property="IsChecked" Value="True">
+          <Setter Property="Tag" Value="&#xE8DE;"/>
+          <Setter Property="Content" Value="Mover"/>
+          <Setter Property="Background" Value="#FFEBE9"/>
+          <Setter Property="Foreground" Value="#CF222E"/>
+          <Setter Property="ToolTip" Value="Mover: el archivo sale de su carpeta original (Ctrl+Z lo devuelve). Clic para volver a copiar."/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="PreviewToggle" TargetType="ToggleButton" BasedOn="{StaticResource PillToggle}">
+      <Setter Property="Tag" Value="&#xE7B3;"/>
+      <Setter Property="Content" Value="Vista previa"/>
+      <Setter Property="ToolTip" Value="Mostrar u ocultar la vista previa del archivo seleccionado"/>
+      <Style.Triggers>
+        <Trigger Property="IsChecked" Value="True">
+          <Setter Property="Background" Value="#DDF4FF"/>
+          <Setter Property="Foreground" Value="#0969DA"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+
+    <!-- A folder in the path above the cards -->
+    <Style x:Key="CrumbButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="6,4"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="AllowDrop" Value="True"/>
+    </Style>
   </Application.Resources>
 </Application>

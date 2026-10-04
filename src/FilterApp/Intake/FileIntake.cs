@@ -5,7 +5,8 @@ using FilterApp.Core;
 
 namespace FilterApp.Intake;
 
-public sealed record IntakeResult(List<PendingItem> Items, int RejectedFolders, int Unreadable = 0);
+/// <paramref name="Folders"/> are dropped folders: their files are listed with <see cref="FolderScanner"/>.
+public sealed record IntakeResult(List<PendingItem> Items, List<string> Folders, int Unreadable = 0);
 
 /// Converts whatever was dropped or pasted into pending files.
 public static class FileIntake
@@ -27,10 +28,10 @@ public static class FileIntake
         if (data.GetData(DataFormats.FileDrop) is string[] paths)
         {
             var items = new List<PendingItem>();
-            int folders = 0;
+            var folders = new List<string>();
             foreach (var path in paths)
             {
-                if (Directory.Exists(path)) folders++;
+                if (Directory.Exists(path)) folders.Add(path);
                 else if (File.Exists(path)) items.Add(new PendingItem(path, Path.GetFileName(path), isTemp: false));
             }
             return new IntakeResult(items, folders);
@@ -38,11 +39,11 @@ public static class FileIntake
         if (data.GetDataPresent(VirtualFormat))
         {
             var files = VirtualFileReader.Extract(data, NewTempDir(), out int unreadable);
-            return new IntakeResult(files.Select(p => new PendingItem(p, Path.GetFileName(p), isTemp: true)).ToList(), 0, unreadable);
+            return new IntakeResult(files.Select(p => new PendingItem(p, Path.GetFileName(p), isTemp: true)).ToList(), [], unreadable);
         }
         if (data.GetData(DataFormats.Bitmap) is BitmapSource bitmap)
-            return new IntakeResult([SaveBitmap(bitmap)], 0);
-        return new IntakeResult([], 0);
+            return new IntakeResult([SaveBitmap(bitmap)], []);
+        return new IntakeResult([], []);
     }
 
     public static void CleanTemp()

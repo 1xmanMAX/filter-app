@@ -3,7 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:core="clr-namespace:FilterApp.Core;assembly=FilterApp.Core"
         xmlns:local="clr-namespace:FilterApp"
-        Title="{Binding Name, StringFormat='Filter App — {0}'}" Icon="app.ico" Width="1040" Height="660" MinWidth="680" MinHeight="420"
+        xmlns:preview="clr-namespace:FilterApp.Preview"
+        Title="{Binding Name, StringFormat='Filter App — {0}'}" Icon="app.ico" Width="1320" Height="780" MinWidth="900" MinHeight="460"
         Background="#F4F5F7" FontFamily="Segoe UI" FontSize="14"
         AllowDrop="True" DragOver="OnWindowDragOver" Drop="OnWindowDrop"
         PreviewKeyDown="OnPreviewKeyDown">
@@ -14,7 +15,7 @@
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
-    <!-- Destination bar -->
+    <!-- Toolbar and destination -->
     <Border Background="White" BorderBrush="#E1E4E8" BorderThickness="0,0,0,1" Padding="16,10">
       <DockPanel>
         <Button x:Name="SessionButton" DockPanel.Dock="Left" Style="{StaticResource FlatButton}" Margin="0,0,8,0"
@@ -33,12 +34,16 @@
         <ToggleButton DockPanel.Dock="Left" Style="{StaticResource LockToggle}" IsChecked="{Binding Locked}"
                       Margin="0,0,8,0" VerticalAlignment="Center"/>
         <ToggleButton DockPanel.Dock="Left" Style="{StaticResource HoldToggle}" IsChecked="{Binding Holding}"
-                      Margin="0,0,12,0" VerticalAlignment="Center"/>
+                      Margin="0,0,8,0" VerticalAlignment="Center"/>
+        <ToggleButton DockPanel.Dock="Left" Style="{StaticResource MoveToggle}" IsChecked="{Binding Move}"
+                      Margin="0,0,8,0" VerticalAlignment="Center" Click="OnMoveToggled"/>
+        <ToggleButton x:Name="PreviewToggle" DockPanel.Dock="Left" Style="{StaticResource PreviewToggle}" IsChecked="True"
+                      Margin="0,0,12,0" VerticalAlignment="Center" Click="OnPreviewToggled"/>
         <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Foreground="#57606A">
           <Run Text="Pendientes: "/><Run Text="{Binding Pending.Count, Mode=OneWay}" FontWeight="SemiBold"/>
         </TextBlock>
         <Button DockPanel.Dock="Right" Margin="0,0,16,0" VerticalAlignment="Center" Click="OnRelease"
-                IsEnabled="{Binding CanRelease}" ToolTip="Copia todos los archivos en espera a la carpeta de destino">
+                IsEnabled="{Binding CanRelease}" ToolTip="Coloca todos los archivos en espera en la carpeta de destino">
           <Button.Style>
             <Style TargetType="Button" BasedOn="{StaticResource AccentButton}">
               <Style.Triggers>
@@ -54,6 +59,22 @@
           <TextBlock>
             <Run Text="Soltar todo aquí ("/><Run Text="{Binding HeldCount, Mode=OneWay}"/><Run Text=")"/>
           </TextBlock>
+        </Button>
+        <Button DockPanel.Dock="Right" Margin="0,0,10,0" VerticalAlignment="Center"
+                Height="34" Click="OnUndoLast" IsEnabled="{Binding CanUndo}" ToolTip="Deshacer la última colocación (Ctrl+Z)">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="&#xE7A7;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <TextBlock Text="Deshacer" VerticalAlignment="Center"/>
+          </StackPanel>
+          <Button.Style>
+            <Style TargetType="Button" BasedOn="{StaticResource FlatButton}">
+              <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                  <Setter Property="Opacity" Value="0.4"/>
+                </Trigger>
+              </Style.Triggers>
+            </Style>
+          </Button.Style>
         </Button>
         <StackPanel VerticalAlignment="Center">
           <TextBlock Text="DESTINO" FontSize="11" FontWeight="SemiBold" Foreground="#57606A"/>
@@ -76,18 +97,23 @@
 
     <Grid Grid.Row="1" Margin="16">
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="270"/>
-        <ColumnDefinition Width="16"/>
-        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="260" MinWidth="200"/>
+        <ColumnDefinition Width="10"/>
+        <ColumnDefinition x:Name="PreviewColumn" Width="*" MinWidth="240"/>
+        <ColumnDefinition x:Name="PreviewSplitterColumn" Width="10"/>
+        <ColumnDefinition Width="1.25*" MinWidth="380"/>
       </Grid.ColumnDefinitions>
 
       <!-- Pending tray -->
       <Border Background="White" CornerRadius="8" BorderBrush="#D0D7DE" BorderThickness="1">
         <DockPanel>
-          <TextBlock DockPanel.Dock="Top" Text="PENDIENTES" Margin="12,10,12,4"
-                     FontSize="11" FontWeight="SemiBold" Foreground="#57606A"/>
+          <DockPanel DockPanel.Dock="Top" Margin="12,8,6,4">
+            <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE74D;" Click="OnClearPending"
+                    ToolTip="Vaciar Pendientes (los archivos no se borran)"/>
+            <TextBlock Text="PENDIENTES" FontSize="11" FontWeight="SemiBold" Foreground="#57606A" VerticalAlignment="Center"/>
+          </DockPanel>
           <Grid>
-            <TextBlock Text="Arrastra archivos aquí&#x0a;o pulsa Ctrl+V" TextAlignment="Center"
+            <TextBlock Text="Arrastra archivos o carpetas&#x0a;aquí, o pulsa Ctrl+V" TextAlignment="Center"
                        VerticalAlignment="Center" Foreground="#8C959F">
               <TextBlock.Style>
                 <Style TargetType="TextBlock">
@@ -100,15 +126,32 @@
                 </Style>
               </TextBlock.Style>
             </TextBlock>
-            <ListBox ItemsSource="{Binding Pending}" BorderThickness="0" Background="Transparent"
-                     HorizontalContentAlignment="Stretch"
-                     PreviewMouseLeftButtonDown="OnPendingMouseDown" PreviewMouseMove="OnPendingMouseMove">
+            <ListBox x:Name="PendingList" ItemsSource="{Binding Pending}" BorderThickness="0" Background="Transparent"
+                     HorizontalContentAlignment="Stretch" SelectionMode="Extended"
+                     VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     SelectionChanged="OnPendingSelectionChanged" KeyDown="OnPendingKeyDown"
+                     PreviewMouseLeftButtonDown="OnPendingMouseDown" PreviewMouseLeftButtonUp="OnPendingMouseUp"
+                     PreviewMouseMove="OnPendingMouseMove" MouseDoubleClick="OnPendingDoubleClick">
               <ListBox.ItemTemplate>
                 <DataTemplate DataType="{x:Type core:PendingItem}">
                   <DockPanel Margin="2" Cursor="SizeAll" ToolTip="{Binding SourcePath}">
                     <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;"
                             ToolTip="Quitar" Click="OnRemovePending"/>
-                    <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                    <StackPanel VerticalAlignment="Center">
+                      <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis"/>
+                      <TextBlock Text="{Binding Group}" FontSize="11" Foreground="#8C959F" TextTrimming="CharacterEllipsis">
+                        <TextBlock.Style>
+                          <Style TargetType="TextBlock">
+                            <Style.Triggers>
+                              <DataTrigger Binding="{Binding Group}" Value="">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                              </DataTrigger>
+                            </Style.Triggers>
+                          </Style>
+                        </TextBlock.Style>
+                      </TextBlock>
+                    </StackPanel>
                   </DockPanel>
                 </DataTemplate>
               </ListBox.ItemTemplate>
@@ -117,75 +160,272 @@
         </DockPanel>
       </Border>
 
-      <!-- Cards -->
-      <DockPanel Grid.Column="2">
-        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-            <Button Style="{StaticResource FlatButton}" Content="Limpiar llenas" Margin="0,0,8,0" Click="OnClearFilled"/>
-            <Button Style="{StaticResource AccentButton}" Content="+ Nombres" Click="OnAddNames"/>
+      <GridSplitter Grid.Column="1" Width="10" HorizontalAlignment="Stretch" Background="Transparent"
+                    ResizeBehavior="PreviousAndNext"/>
+
+      <!-- Preview -->
+      <preview:PreviewPane x:Name="Preview" Grid.Column="2"/>
+
+      <GridSplitter x:Name="PreviewSplitter" Grid.Column="3" Width="10" HorizontalAlignment="Stretch"
+                    Background="Transparent" ResizeBehavior="PreviousAndNext"/>
+
+      <!-- Destination tree -->
+      <DockPanel Grid.Column="4">
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+            <Button Style="{StaticResource FlatButton}" Content="Limpiar llenas" Margin="0,0,8,0" Click="OnClearFilled"
+                    ToolTip="Quita de la lista lo ya colocado (los archivos se quedan donde están)"/>
+            <Button Style="{StaticResource FlatButton}" Margin="0,0,8,0" Click="OnAddFolder" ToolTip="Nueva carpeta aquí">
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="&#xE8F4;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <TextBlock Text="Carpeta" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+            <Button Style="{StaticResource AccentButton}" Content="+ Nombres" Click="OnAddNames"
+                    ToolTip="Agrega nombres y estructuras de carpetas aquí"/>
           </StackPanel>
-          <TextBlock Text="TARJETAS" VerticalAlignment="Center" FontSize="11" FontWeight="SemiBold" Foreground="#57606A"/>
-        </DockPanel>
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
-          <ItemsControl ItemsSource="{Binding Cards}">
+          <!-- Path: Destino › Clientes › Juan -->
+          <ItemsControl x:Name="Breadcrumb" VerticalAlignment="Center">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
-              <DataTemplate DataType="{x:Type core:CardViewModel}">
-                <Border x:Name="Card" Width="184" Height="96" Margin="0,0,10,10" Padding="12,10" CornerRadius="8"
-                        Background="White" BorderBrush="#D0D7DE" BorderThickness="1"
-                        AllowDrop="True" DragEnter="OnCardDragOver" DragOver="OnCardDragOver"
-                        DragLeave="OnCardDragLeave" Drop="OnCardDrop">
-                  <Grid>
-                    <Grid.RowDefinitions>
-                      <RowDefinition Height="*"/>
-                      <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap"
-                               TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/>
-                    <DockPanel Grid.Row="1">
-                      <Button x:Name="Action" DockPanel.Dock="Right" Style="{StaticResource IconButton}"
-                              Content="&#xE74D;" ToolTip="Eliminar tarjeta" Click="OnCardAction"/>
-                      <TextBlock x:Name="Sub" Text="libre" FontSize="12" Foreground="#8C959F"
-                                 TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                    </DockPanel>
-                  </Grid>
-                </Border>
+              <DataTemplate DataType="{x:Type local:Crumb}">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock x:Name="Sep" Text="&#xE76C;" FontFamily="{StaticResource IconFont}" FontSize="10"
+                             Foreground="#8C959F" VerticalAlignment="Center" Margin="2,0"/>
+                  <Button x:Name="CrumbButton" Style="{StaticResource CrumbButton}" Click="OnCrumbClick"
+                          DragEnter="OnCrumbDragOver" DragOver="OnCrumbDragOver" DragLeave="OnCrumbDragLeave" Drop="OnCrumbDrop">
+                    <StackPanel Orientation="Horizontal">
+                      <TextBlock x:Name="Home" Text="&#xE80F;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center"
+                                 Margin="0,0,6,0" Visibility="Collapsed"/>
+                      <TextBlock Text="{Binding Label}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+                </StackPanel>
                 <DataTemplate.Triggers>
-                  <DataTrigger Binding="{Binding Status}" Value="Copying">
-                    <Setter TargetName="Card" Property="Background" Value="#FFF8C5"/>
-                    <Setter TargetName="Sub" Property="Text" Value="copiando…"/>
-                    <Setter TargetName="Action" Property="Visibility" Value="Collapsed"/>
+                  <DataTrigger Binding="{Binding IsRoot}" Value="True">
+                    <Setter TargetName="Sep" Property="Visibility" Value="Collapsed"/>
+                    <Setter TargetName="Home" Property="Visibility" Value="Visible"/>
                   </DataTrigger>
-                  <DataTrigger Binding="{Binding Status}" Value="Filled">
-                    <Setter TargetName="Card" Property="Background" Value="#DAFBE1"/>
-                    <Setter TargetName="Card" Property="BorderBrush" Value="#2DA44E"/>
-                    <Setter TargetName="Sub" Property="Text" Value="{Binding OriginalName, StringFormat='✔ {0}'}"/>
-                    <Setter TargetName="Sub" Property="Foreground" Value="#1A7F37"/>
-                    <Setter TargetName="Sub" Property="ToolTip" Value="{Binding DestPath}"/>
-                    <Setter TargetName="Action" Property="Content" Value="&#xE711;"/>
-                    <Setter TargetName="Action" Property="ToolTip" Value="Deshacer: borra la copia y libera la tarjeta"/>
+                  <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                    <Setter TargetName="CrumbButton" Property="Foreground" Value="#0969DA"/>
                   </DataTrigger>
-                  <DataTrigger Binding="{Binding Status}" Value="Held">
-                    <Setter TargetName="Card" Property="Background" Value="#FBEFFF"/>
-                    <Setter TargetName="Card" Property="BorderBrush" Value="#8250DF"/>
-                    <Setter TargetName="Sub" Property="Text" Value="{Binding HeldItem.DisplayName, StringFormat='⏸ {0}'}"/>
-                    <Setter TargetName="Sub" Property="Foreground" Value="#8250DF"/>
-                    <Setter TargetName="Sub" Property="ToolTip" Value="{Binding HeldItem.SourcePath}"/>
-                    <Setter TargetName="Action" Property="Content" Value="&#xE711;"/>
-                    <Setter TargetName="Action" Property="ToolTip" Value="Devolver a Pendientes"/>
-                  </DataTrigger>
-                  <DataTrigger Binding="{Binding IsDragTarget}" Value="True">
-                    <Setter TargetName="Card" Property="Background" Value="#DDF4FF"/>
-                    <Setter TargetName="Card" Property="BorderBrush" Value="#0969DA"/>
-                    <Setter TargetName="Card" Property="BorderThickness" Value="2"/>
+                  <DataTrigger Binding="{Binding Folder.IsDragTarget}" Value="True">
+                    <Setter TargetName="CrumbButton" Property="Background" Value="#DDF4FF"/>
                   </DataTrigger>
                 </DataTemplate.Triggers>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
-        </ScrollViewer>
+        </DockPanel>
+
+        <!-- Quick bar: search the tree or type a path, Enter sends the selected file -->
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
+          <TextBox x:Name="QuickBox" Padding="32,7,8,7" BorderBrush="#D0D7DE" VerticalContentAlignment="Center"
+                   TextChanged="OnQuickTextChanged" PreviewKeyDown="OnQuickKeyDown"/>
+          <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" Foreground="#8C959F" IsHitTestVisible="False"
+                     VerticalAlignment="Center" Margin="11,0,0,0"/>
+          <TextBlock x:Name="QuickHint" IsHitTestVisible="False" VerticalAlignment="Center" Margin="34,0,0,0" Foreground="#8C959F"
+                     Text="Buscar carpeta o nombre, o escribir una ruta como Clientes/Juan/DNI…  (Ctrl+F)"
+                     TextTrimming="CharacterEllipsis"/>
+        </Grid>
+
+        <Grid>
+          <!-- The open folder: subfolders, names and loose files -->
+          <ScrollViewer x:Name="TreeScroll" VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="TreePanel">
+              <ItemsControl ItemsSource="{Binding Folders}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="{x:Type core:FolderViewModel}">
+                    <Border x:Name="Card" Width="184" Height="96" Margin="0,0,10,10" Padding="12,10" CornerRadius="8"
+                            Background="#FFF8E1" BorderBrush="#E3C46B" BorderThickness="1" Cursor="Hand"
+                            ToolTip="Clic para abrir · suelta archivos aquí (mantenlos encima para entrar)"
+                            AllowDrop="True" DragEnter="OnFolderDragOver" DragOver="OnFolderDragOver"
+                            DragLeave="OnFolderDragLeave" Drop="OnFolderDrop" MouseLeftButtonDown="OnFolderMouseDown">
+                      <Grid>
+                        <Grid.RowDefinitions>
+                          <RowDefinition Height="*"/>
+                          <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <DockPanel>
+                          <TextBlock DockPanel.Dock="Left" Text="&#xE8B7;" FontFamily="{StaticResource IconFont}" FontSize="16"
+                                     Foreground="#BF8700" Margin="0,1,8,0"/>
+                          <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" TextTrimming="CharacterEllipsis"/>
+                        </DockPanel>
+                        <DockPanel Grid.Row="1">
+                          <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE74D;"
+                                  ToolTip="Quitar carpeta de la lista" Click="OnRemoveFolder"/>
+                          <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE70F;"
+                                  ToolTip="Renombrar" Click="OnRenameFolder"/>
+                          <TextBlock Text="{Binding Summary}" FontSize="12" Foreground="#7D6608"
+                                     TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                        </DockPanel>
+                      </Grid>
+                    </Border>
+                    <DataTemplate.Triggers>
+                      <DataTrigger Binding="{Binding IsDragTarget}" Value="True">
+                        <Setter TargetName="Card" Property="Background" Value="#DDF4FF"/>
+                        <Setter TargetName="Card" Property="BorderBrush" Value="#0969DA"/>
+                        <Setter TargetName="Card" Property="BorderThickness" Value="2"/>
+                      </DataTrigger>
+                    </DataTemplate.Triggers>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+              <ItemsControl ItemsSource="{Binding Cards}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="{x:Type core:CardViewModel}">
+                    <Border x:Name="Card" Width="184" Height="96" Margin="0,0,10,10" Padding="12,10" CornerRadius="8"
+                            Background="White" BorderBrush="#D0D7DE" BorderThickness="1"
+                            AllowDrop="True" DragEnter="OnCardDragOver" DragOver="OnCardDragOver"
+                            DragLeave="OnCardDragLeave" Drop="OnCardDrop" MouseLeftButtonUp="OnCardClick">
+                      <Grid>
+                        <Grid.RowDefinitions>
+                          <RowDefinition Height="*"/>
+                          <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap"
+                                   TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/>
+                        <DockPanel Grid.Row="1">
+                          <Button x:Name="Action" DockPanel.Dock="Right" Style="{StaticResource IconButton}"
+                                  Content="&#xE74D;" ToolTip="Eliminar tarjeta" Click="OnCardAction"/>
+                          <TextBlock x:Name="Sub" Text="libre" FontSize="12" Foreground="#8C959F"
+                                     TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                        </DockPanel>
+                      </Grid>
+                    </Border>
+                    <DataTemplate.Triggers>
+                      <DataTrigger Binding="{Binding Status}" Value="Copying">
+                        <Setter TargetName="Card" Property="Background" Value="#FFF8C5"/>
+                        <Setter TargetName="Sub" Property="Text" Value="colocando…"/>
+                        <Setter TargetName="Action" Property="Visibility" Value="Collapsed"/>
+                      </DataTrigger>
+                      <DataTrigger Binding="{Binding Status}" Value="Filled">
+                        <Setter TargetName="Card" Property="Background" Value="#DAFBE1"/>
+                        <Setter TargetName="Card" Property="BorderBrush" Value="#2DA44E"/>
+                        <Setter TargetName="Card" Property="Cursor" Value="Hand"/>
+                        <Setter TargetName="Sub" Property="Text" Value="{Binding OriginalName, StringFormat='✔ {0}'}"/>
+                        <Setter TargetName="Sub" Property="Foreground" Value="#1A7F37"/>
+                        <Setter TargetName="Sub" Property="ToolTip" Value="{Binding DestPath}"/>
+                        <Setter TargetName="Action" Property="Content" Value="&#xE711;"/>
+                        <Setter TargetName="Action" Property="ToolTip" Value="Deshacer: quita el archivo y libera la tarjeta"/>
+                      </DataTrigger>
+                      <DataTrigger Binding="{Binding Status}" Value="Held">
+                        <Setter TargetName="Card" Property="Background" Value="#FBEFFF"/>
+                        <Setter TargetName="Card" Property="BorderBrush" Value="#8250DF"/>
+                        <Setter TargetName="Card" Property="Cursor" Value="Hand"/>
+                        <Setter TargetName="Sub" Property="Text" Value="{Binding HeldItem.DisplayName, StringFormat='⏸ {0}'}"/>
+                        <Setter TargetName="Sub" Property="Foreground" Value="#8250DF"/>
+                        <Setter TargetName="Sub" Property="ToolTip" Value="{Binding HeldItem.SourcePath}"/>
+                        <Setter TargetName="Action" Property="Content" Value="&#xE711;"/>
+                        <Setter TargetName="Action" Property="ToolTip" Value="Devolver a Pendientes"/>
+                      </DataTrigger>
+                      <DataTrigger Binding="{Binding IsDragTarget}" Value="True">
+                        <Setter TargetName="Card" Property="Background" Value="#DDF4FF"/>
+                        <Setter TargetName="Card" Property="BorderBrush" Value="#0969DA"/>
+                        <Setter TargetName="Card" Property="BorderThickness" Value="2"/>
+                      </DataTrigger>
+                    </DataTemplate.Triggers>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+              <!-- Files dropped on this folder, with their own names -->
+              <StackPanel Margin="0,4,10,0">
+                <StackPanel.Style>
+                  <Style TargetType="StackPanel">
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding Files.Count}" Value="0">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </StackPanel.Style>
+                <TextBlock Margin="2,0,0,6" FontSize="11" FontWeight="SemiBold" Foreground="#57606A">
+                  <Run Text="ARCHIVOS EN ESTA CARPETA ("/><Run Text="{Binding Files.Count, Mode=OneWay}"/><Run Text=")"/>
+                </TextBlock>
+                <Border Background="White" CornerRadius="8" BorderBrush="#D0D7DE" BorderThickness="1" Padding="4">
+                  <ItemsControl ItemsSource="{Binding Files}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate DataType="{x:Type core:CardViewModel}">
+                        <Border x:Name="Row" Padding="8,3" CornerRadius="4" Background="Transparent" Cursor="Hand"
+                                MouseLeftButtonUp="OnCardClick" MouseLeftButtonDown="OnFileMouseDown">
+                          <DockPanel>
+                            <Button x:Name="Action" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;"
+                                    ToolTip="Deshacer: quita el archivo de aquí" Click="OnCardAction"/>
+                            <TextBlock x:Name="Icon" DockPanel.Dock="Left" Text="&#xE73E;" FontFamily="{StaticResource IconFont}"
+                                       Foreground="#1A7F37" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                       ToolTip="{Binding PreviewPath}"/>
+                          </DockPanel>
+                        </Border>
+                        <DataTemplate.Triggers>
+                          <DataTrigger Binding="{Binding Status}" Value="Held">
+                            <Setter TargetName="Icon" Property="Text" Value="&#xE769;"/>
+                            <Setter TargetName="Icon" Property="Foreground" Value="#8250DF"/>
+                            <Setter TargetName="Action" Property="ToolTip" Value="Devolver a Pendientes"/>
+                          </DataTrigger>
+                          <DataTrigger Binding="{Binding Status}" Value="Copying">
+                            <Setter TargetName="Icon" Property="Text" Value="&#xE895;"/>
+                            <Setter TargetName="Icon" Property="Foreground" Value="#9A6700"/>
+                            <Setter TargetName="Action" Property="Visibility" Value="Hidden"/>
+                          </DataTrigger>
+                          <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Row" Property="Background" Value="#F6F8FA"/>
+                          </Trigger>
+                        </DataTemplate.Triggers>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Border>
+              </StackPanel>
+
+              <TextBlock x:Name="EmptyHint" Margin="4,24,4,0" TextWrapping="Wrap" Foreground="#8C959F" TextAlignment="Center"
+                         Text="Vacía. Pulsa «+ Nombres» para pegar nombres o una estructura de carpetas,&#x0a;«Carpeta» para crear una, o suelta archivos aquí.">
+                <TextBlock.Style>
+                  <Style TargetType="TextBlock">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding IsEmpty}" Value="True">
+                        <Setter Property="Visibility" Value="Visible"/>
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </TextBlock.Style>
+              </TextBlock>
+            </StackPanel>
+          </ScrollViewer>
+
+          <!-- Drop zone for the open folder itself: the empty space under its cards -->
+          <Border x:Name="FolderDropZone" Panel.ZIndex="-1" Background="Transparent" AllowDrop="True"
+                  DragEnter="OnCurrentDragOver" DragOver="OnCurrentDragOver" DragLeave="OnCurrentDragLeave" Drop="OnCurrentDrop"/>
+
+          <!-- Quick bar results -->
+          <ListBox x:Name="Results" Visibility="Collapsed" BorderBrush="#D0D7DE" Background="White" Padding="4"
+                   HorizontalContentAlignment="Stretch" MouseDoubleClick="OnResultDoubleClick">
+            <ListBox.ItemTemplate>
+              <DataTemplate DataType="{x:Type local:QuickRow}">
+                <DockPanel Margin="4,3" Background="Transparent" AllowDrop="True"
+                           DragEnter="OnResultDragOver" DragOver="OnResultDragOver" Drop="OnResultDrop">
+                  <TextBlock DockPanel.Dock="Left" Text="{Binding Icon}" FontFamily="{StaticResource IconFont}" FontSize="16"
+                             Foreground="{Binding IconColor}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                  <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Text="{Binding Subtitle}" FontSize="12" Foreground="#57606A" TextTrimming="CharacterEllipsis"/>
+                  </StackPanel>
+                </DockPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </Grid>
       </DockPanel>
     </Grid>
 

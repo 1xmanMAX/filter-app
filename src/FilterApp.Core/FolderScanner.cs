@@ -38,4 +38,30 @@ public static class FolderScanner
         }
         return items;
     }
+
+    /// The subfolders of a folder as indented text for <see cref="StructureParser"/> ("Name/" per folder,
+    /// two spaces per level), to reuse an existing folder layout. Files are not included.
+    public static string Structure(string folder, int maxFolders = 5000)
+    {
+        var lines = new List<string>();
+        void Walk(string dir, int level)
+        {
+            IEnumerable<DirectoryInfo> subdirs;
+            try
+            {
+                subdirs = new DirectoryInfo(dir).EnumerateDirectories("*", Options)
+                    .Where(d => !d.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                    .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return; }
+            foreach (var sub in subdirs)
+            {
+                if (lines.Count >= maxFolders) return;
+                lines.Add(new string(' ', level * 2) + sub.Name + "/");
+                Walk(sub.FullName, level + 1);
+            }
+        }
+        Walk(Path.GetFullPath(folder), 0);
+        return string.Join(Environment.NewLine, lines);
+    }
 }

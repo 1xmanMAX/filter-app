@@ -94,11 +94,9 @@
 2. **Ábrelo** con doble clic y pulsa **Siguiente → Instalar**.
 3. **Búscalo** en el menú Inicio: *Filter App*.
 
-> [!TIP]
-> No pide permisos de administrador. Para **actualizar**, instala la versión nueva encima: tus sesiones se conservan.
+> 💡 **Consejo:** No pide permisos de administrador. Para **actualizar**, instala la versión nueva encima: tus sesiones se conservan.
 
-> [!NOTE]
-> Si aparece **«Windows protegió su PC»**, pulsa **Más información → Ejecutar de todas formas**. Sale porque la app es nueva y Windows aún no la conoce.
+> ℹ️ **Importante:** Si aparece **«Windows protegió su PC»**, pulsa **Más información → Ejecutar de todas formas**. Sale porque la app es nueva y Windows aún no la conoce.
 
 <details>
 <summary>Otras formas de instalar y cómo desinstalar</summary>
@@ -165,7 +163,7 @@ Haz clic en *scan_0012.pdf*: en la vista previa ves que es el DNI de Juan. Entra
 
 <p align="center"><img src="docs/img/carpeta.png" width="900" alt="Dentro de Juan Pérez: la ficha DNI en verde con scan_0012.pdf, y abajo los archivos guardados en la carpeta"></p>
 
-- La ficha **DNI** se pone **verde ✔**: el archivo ya está en *D:\Documentos\Clientes\Juan Pérez\DNI.pdf*.
+- La ficha **DNI** se pone **verde ✅**: el archivo ya está en *D:\Documentos\Clientes\Juan Pérez\DNI.pdf*.
 - Lo que sueltas **sobre la carpeta** (no sobre un nombre) entra con su nombre original. Lo ves abajo, en **Archivos en esta carpeta**.
 - La ruta de arriba (*Destino › Clientes › Juan Pérez*) te devuelve a cualquier nivel con un clic.
 
@@ -182,7 +180,7 @@ Haz clic en cualquier archivo y lo ves al instante, **tal como es**, sin abrir o
 | Archivo | Cómo se ve |
 |---|---|
 | 📄 **PDF** | Página a página, al instante aunque tenga cientos de páginas |
-| 📝 **Word** | Con títulos, colores, listas, tablas con sus marcos e imágenes, **aunque no tengas Office** |
+| 📝 **Word (.docx)** | Con títulos, colores, listas, tablas con sus marcos e imágenes, **aunque no tengas Office** |
 | 📊 **Excel, PowerPoint, Outlook** | Con la vista previa de Windows (necesita Office) |
 | 🌐 **Páginas web guardadas** | Con su diseño, sin conectarse a internet |
 | 🖼️ **Fotos** | Bien orientadas, con zoom |
@@ -192,8 +190,7 @@ Haz clic en cualquier archivo y lo ves al instante, **tal como es**, sin abrir o
 
 <p align="center"><img src="docs/img/web.png" width="900" alt="Vista previa de una página web guardada, con su diseño y su tabla"></p>
 
-> [!TIP]
-> **Para moverte:** mantén pulsada la **rueda del ratón** y arrastra (en PDF y fotos también vale el botón izquierdo). **Ctrl + rueda** hace zoom en los PDF y la **rueda** en las fotos. **Doble clic** en un archivo de la lista lo abre con su programa.
+> 🖱️ **Para moverte:** mantén pulsada la **rueda del ratón** y arrastra (en PDF y fotos también vale el botón izquierdo). **Ctrl + rueda** hace zoom en los PDF y la **rueda** en las fotos. **Doble clic** en un archivo de la lista lo abre con su programa.
 
 ---
 
@@ -204,14 +201,14 @@ En el destino hay **dos tipos de fichas**:
 | Ficha | Cómo es | Qué pasa al soltar un archivo |
 |---|---|---|
 | 📁 **Carpeta** | Amarilla | Entra con **su nombre original** (*whatsapp_2026-03-02.jpg*) |
-| 🏷️ **Nombre** | Blanca, dice *libre* | Toma **ese nombre** (*DNI.pdf*) y la ficha se pone verde ✔ |
+| 🏷️ **Nombre** | Blanca, dice *libre* | Toma **ese nombre** (*DNI.pdf*) y la ficha se pone verde ✅ |
 
 La extensión se conserva siempre: una foto soltada en *Foto carnet* queda como *Foto carnet.jpg*.
 
 **Tres formas de crear carpetas y nombres, sin escribir barras:**
 
-1. **Las fichas punteadas** «＋ Nueva carpeta» y «＋ Nuevo nombre»: clic, escribe y **Enter**. Puedes seguir con la siguiente. **Ctrl+Enter** crea la carpeta y entra en ella.
-2. **Suelta archivos sobre «＋ Nueva carpeta»**, escribe el nombre y pulsa Enter: se crea la carpeta con ellos dentro.
+1. **Las fichas punteadas** «+ Nueva carpeta» y «+ Nuevo nombre»: clic, escribe y **Enter**. Puedes seguir con la siguiente. **Ctrl+Enter** crea la carpeta y entra en ella.
+2. **Suelta archivos sobre «+ Nueva carpeta»**, escribe el nombre y pulsa Enter: se crea la carpeta con ellos dentro.
 3. **+ Nombres** para muchos a la vez, con sangrías, como en el [paso 2](#paso-2--escribe-la-estructura). Debajo eliges si las líneas sueltas son *nombres de archivo* o *carpetas*. **Copiar estructura de una carpeta…** repite el orden de una carpeta que ya tengas.
 
 Las carpetas solo se crean en el disco cuando reciben su primer archivo: nada de carpetas vacías. El lápiz ✏️ renombra una carpeta y la papelera 🗑 la quita de la lista (**nunca se borra del disco**).
@@ -227,14 +224,13 @@ No hace falta decidirlo todo de una vez. Ordena **por pasadas**:
 1. **1.ª pasada:** suelta todo lo de clientes en **Clientes**, sin pensar más. Selecciona varios con **Ctrl** o **Shift** + clic y arrástralos juntos.
 2. **2.ª pasada:** entra en **Clientes**. Abajo, en **Archivos en esta carpeta**, está todo lo que soltaste. Arrástralo a una subcarpeta o a un nombre.
 
-> [!TIP]
-> Mientras arrastras, **mantén el archivo un momento sobre una carpeta** y se abrirá sola para que bajes de nivel sin soltarlo.
+> 💡 **Consejo:** Mientras arrastras, **mantén el archivo un momento sobre una carpeta** y se abrirá sola para que bajes de nivel sin soltarlo.
 
 <details>
 <summary>Más cosas que puedes hacer en «Archivos en esta carpeta»</summary>
 
 - Arrastrarlos a **Destino**, en la ruta de arriba, para subirlos de nivel.
-- Soltarlos en «＋ Nueva carpeta» para crear una carpeta con ellos dentro.
+- Soltarlos en «+ Nueva carpeta» para crear una carpeta con ellos dentro.
 - **F2** o ✏️: cambiar el nombre sin moverlos.
 - **✕**: devolverlos a Pendientes. Si los habías movido, también vuelven a su sitio original.
 </details>
@@ -295,11 +291,11 @@ Muévela a donde quieras (recuerda su sitio). **Doble clic** o ⤢ vuelve a la v
 
 **Todo se guarda solo.** Cada *sesión* es un trabajo distinto, con sus carpetas, nombres, destino y pendientes. Pulsa el botón de la sesión (arriba a la izquierda) para:
 
-- **＋ Nueva:** escribe el nombre y pulsa Enter.
+- **+ Nueva:** escribe el nombre y pulsa Enter.
 - **Abrir otra:** un clic en ella.
 - **Renombrar o eliminar:** ✏️ y 🗑.
 
-La barra verde muestra cuánto falta (*87 de 120*), y dice **COMPLETA** cuando terminas.
+La barra verde muestra cuánto llevas (*87 de 120*), y dice **COMPLETA** cuando terminas.
 
 ---
 
@@ -356,7 +352,7 @@ E:\Ordenado
 | **Supr** | Quitar de Pendientes |
 | **F2** | Renombrar un archivo dentro de la carpeta |
 | **Tab / Shift+Tab** | En **+ Nombres**: meter o sacar una línea |
-| **Ctrl+Enter** | En «＋ Nueva carpeta»: crearla y entrar |
+| **Ctrl+Enter** | En «+ Nueva carpeta»: crearla y entrar |
 
 ---
 
@@ -365,7 +361,7 @@ E:\Ordenado
 - **Deshacer:** **Ctrl+Z** deshace lo último. Si el archivo se había movido, vuelve a su carpeta original y a Pendientes.
 - **Nunca sobrescribe:** si *DNI.pdf* ya existe, guarda *DNI (2).pdf*.
 - **Nunca deja archivos a medias:** aunque se vaya la luz mientras copia.
-- **Quitar no es borrar:** la papelera, la ✕ y **Limpiar llenas** solo quitan cosas **de la lista**. Tus archivos del disco no se tocan.
+- **Quitar no es borrar:** la papelera, la ✕ y **Limpiar llenas** (que quita de la vista lo ya terminado) solo quitan cosas **de la lista**. Tus archivos del disco no se tocan.
 - **Al mover entre discos**, primero copia y solo borra el original cuando la copia ha terminado bien.
 
 ---
@@ -381,7 +377,7 @@ No. Filter App nunca borra ni sobrescribe. En modo **Mover** el original sale de
 <details>
 <summary><b>Un Word o un Excel no se ve en la vista previa</b></summary>
 
-Los Word (.docx) se ven siempre, aunque no tengas Office. Excel, PowerPoint y los Word antiguos (.doc) usan la vista previa de Office: si no está instalado, verás su miniatura. Pulsa **Abrir** para verlo con su programa.
+Los Word (.docx) se ven siempre, aunque no tengas Office. Excel, PowerPoint y los Word antiguos (.doc) usan la vista previa de Windows, que necesita Office: si no está instalado, verás su miniatura. Pulsa **Abrir** para verlo con su programa.
 </details>
 
 <details>
@@ -410,4 +406,4 @@ No. Las carpetas que escribes en Filter App se crean en el disco solo cuando les
 
 ---
 
-<p align="center"><sub>Las capturas de esta página se hicieron con archivos de ejemplo inventados · ¿Quieres compilarla o colaborar? Mira <a href="docs/DESARROLLO.md">docs/DESARROLLO.md</a></sub></p>
+<p align="center"><sub>Las capturas de esta página se hicieron con archivos de ejemplo inventados · ¿Quieres compilar la app o colaborar? Mira <a href="docs/DESARROLLO.md">docs/DESARROLLO.md</a></sub></p>

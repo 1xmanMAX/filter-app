@@ -16,5 +16,5 @@ release.cmd                              :: instalador + ZIP autocontenido para 
 | `src/FilterApp/Preview` | Vista previa: PDFium, lector de Word propio, handlers de Office, WebView2, medios |
 | `installer/` | `FilterApp.iss` (Inno Setup), `Instalar.cmd` / `Desinstalar.cmd` |
 
-Las capturas de este README se hicieron con archivos de ejemplo inventados.
+Las capturas del README se hicieron con archivos de ejemplo inventados.
 

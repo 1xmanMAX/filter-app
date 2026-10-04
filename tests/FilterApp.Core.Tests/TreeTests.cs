@@ -42,6 +42,29 @@ public sealed class TreeTests : IDisposable
     }
 
     [Fact]
+    public void Parser_makes_a_line_with_indented_lines_a_folder_without_any_slash()
+    {
+        var b = NewBoard();
+        b.AddNames("Clientes\n\tJuan Perez\n\t\tDNI\n\t\tContrato\n\tAna\nSuelto");
+
+        var juan = b.Root.FindFolder("Clientes")!.FindFolder("Juan Perez")!;
+        Assert.Equal(["DNI", "Contrato"], juan.Cards.Select(c => c.Name));
+        Assert.Equal(["Ana"], b.Root.FindFolder("Clientes")!.Cards.Select(c => c.Name));
+        Assert.Equal(["Suelto"], b.Cards.Select(c => c.Name));
+    }
+
+    [Fact]
+    public void Parser_can_make_every_line_a_folder()
+    {
+        var b = NewBoard();
+        b.AddNames("Fotos\n  2024\n  2025\nVideos", leavesAreFolders: true);
+
+        Assert.Equal(["Fotos", "Videos"], b.Root.Folders.Select(f => f.Name));
+        Assert.Equal(["2024", "2025"], b.Root.FindFolder("Fotos")!.Folders.Select(f => f.Name));
+        Assert.Empty(b.Cards);
+    }
+
+    [Fact]
     public void Parser_reuses_existing_folders_ignoring_case()
     {
         var b = NewBoard();

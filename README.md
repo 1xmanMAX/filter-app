@@ -77,32 +77,41 @@ Cada sesión guarda sus tarjetas, su destino y sus pendientes.
 
 ## Vista previa 👁
 
-Haz clic en un pendiente y míralo al instante, sin abrir otro programa:
+Haz clic en un pendiente y míralo al instante, con su formato original y sin abrir otro programa:
 
-| Tipo | Se ve con |
+| Tipo | Cómo se ve |
 |---|---|
-| PDF, SVG, MP3, MP4, WAV… | El motor de Edge (ya viene en Windows 11) |
-| Word, Excel, PowerPoint, Outlook… | La misma vista previa del Explorador (si tienes Office). Sin Office, los Word se muestran como texto |
-| Fotos (JPG, PNG, WEBP, HEIC…) | Al instante y bien orientadas |
+| PDF | Con PDFium (el motor de Chrome): página a página, en milisegundos aunque tenga cientos de páginas |
+| Word, Excel, PowerPoint, Outlook… | Con la vista previa del Explorador (si tienes Office). En Word, el texto aparece al instante mientras carga el formato |
+| Video y audio (MP4, MOV, MP3, WAV…) | Con el reproductor de Windows |
+| Fotos (JPG, PNG, WEBP, HEIC…) | Bien orientadas. **Rueda** = zoom, **doble clic** = tamaño real |
 | TXT, CSV, JSON, código, HTML | Como texto |
 | Lo demás | Su miniatura + botón **Abrir** |
 
+**Para moverte:** mantén pulsado el **botón central** (o el izquierdo en PDF e imágenes) y arrastra. **Ctrl + rueda** hace zoom en el PDF.
 Doble clic en un archivo → se abre con su programa.
+
+## Mini: bandeja rápida 📥
+
+Pulsa **Mini** y la app se vuelve una ventanita que queda siempre encima de las demás. Suelta ahí archivos o carpetas enteras mientras trabajas: van a **Pendientes** para ordenarlos después. Muévela a donde quieras (recuerda su sitio); doble clic o ⤢ vuelve a la ventana completa.
 
 ## Carpetas y niveles 🗂️
 
 Para reorganizar discos completos:
 
 - **Suelta una carpeta entera** en Pendientes: entran todos sus archivos (con subcarpetas) y debajo de cada uno ves de qué carpeta viene.
-- **Crea la estructura de destino** con **+ Nombres**: termina una línea en `/` para crear una carpeta, y usa sangría o rutas:
-  ```
-  Clientes/
-    Juan Perez/
-      DNI
-      Contrato
-  Facturas/2026/
-  ```
-  Con **Copiar estructura de una carpeta…** repites el orden de carpetas que ya tengas.
+- **Crea carpetas y nombres sin escribir símbolos:**
+  - Fichas **＋ Nueva carpeta** / **＋ Nuevo nombre**: clic, escribe, **Enter** (y sigue con la siguiente). **Ctrl+Enter** crea la carpeta y entra.
+  - **Suelta archivos sobre «＋ Nueva carpeta»**, escribe el nombre y Enter: se crea con los archivos dentro.
+  - **+ Nombres** para muchas a la vez: **Tab** mete una línea dentro de la de arriba y esa se vuelve carpeta sola. A la derecha ves cómo quedará:
+    ```
+    Clientes
+        Juan Perez
+            DNI
+            Contrato
+    Facturas 2026
+    ```
+    Elige si las líneas sueltas son *nombres de archivo* o *carpetas*. Con **Copiar estructura de una carpeta…** repites un orden que ya tengas.
 - **Clic en una carpeta** para entrar. La ruta de arriba (`Destino › Clientes › Juan`) te lleva de vuelta.
 - **Suelta archivos en una carpeta**: entran con su nombre. **Mantenlos encima** y la carpeta se abre para ir más adentro.
 - **Suelta una carpeta del Explorador sobre una carpeta**: entra entera, con sus subcarpetas.
@@ -129,6 +138,7 @@ Después se selecciona el siguiente pendiente. **Ctrl+Z** deshace, **Ctrl+F** va
 | ⏸ **Retener** | Guarda los archivos en las tarjetas hasta pulsar **Soltar todo aquí** |
 | 📄 **Copiar** / **Mover** | Copiar deja el original donde está. **Mover** lo saca de su carpeta (en el mismo disco es instantáneo) |
 | 👁 **Vista previa** | Muestra u oculta el panel de vista previa |
+| 📥 **Mini** | Bandeja rápida: ventanita siempre visible para soltar archivos |
 | ↶ **Deshacer** | Deshace lo último (Ctrl+Z). Si se movió, el archivo vuelve a su sitio y a Pendientes |
 | ✕ en tarjeta verde | Deshacer: quita el archivo y libera la tarjeta |
 | ✕ en tarjeta lila | Devuelve el archivo a Pendientes |

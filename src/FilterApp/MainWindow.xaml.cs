@@ -1,6 +1,7 @@
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Data;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -31,6 +32,8 @@ public partial class MainWindow : Window
     PendingItem? _deferredSelect;
     /// Operations placing many files, between which no card is "copying" for a moment.
     int _batches;
+    readonly NewTile _newFolder = new(isFolder: true);
+    readonly NewTile _newName = new(isFolder: false);
 
     public MainWindow(Board board, SessionStore sessions, string sessionId)
     {
@@ -228,6 +231,7 @@ public partial class MainWindow : Window
     /// Brings the window to the front (a second launch of the app lands here).
     public void BringToFront()
     {
+        if (_mini is not null) ExitMini();
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Show();
         Activate();
@@ -237,6 +241,35 @@ public partial class MainWindow : Window
     }
 
     // ---- Toolbar ----
+
+    MiniWindow? _mini;
+
+    /// Quick inbox: the app shrinks to a small window on top of everything to drop files on.
+    void OnMini(object sender, RoutedEventArgs e)
+    {
+        if (_mini is not null) return;
+        _mini = new MiniWindow(_board, AddToPendingAsync);
+        _mini.ExpandRequested += ExitMini;
+        _mini.Closed += (_, _) => { if (_mini is not null) { _mini = null; RestoreFromMini(); } };
+        _mini.Show();
+        Hide();
+    }
+
+    void ExitMini()
+    {
+        var mini = _mini;
+        _mini = null;
+        mini?.Close();
+        RestoreFromMini();
+    }
+
+    void RestoreFromMini()
+    {
+        Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+        SelectFirstPendingIfNone();
+    }
 
     void OnMoveToggled(object sender, RoutedEventArgs e)
     {
@@ -350,12 +383,17 @@ public partial class MainWindow : Window
         return items;
     }
 
-    async void AddToPending(IDataObject data)
+    async void AddToPending(IDataObject data) => await AddToPendingAsync(data);
+
+    /// Puts dropped or pasted files (and the files of dropped folders) in the tray. Returns how many were new.
+    async Task<int> AddToPendingAsync(IDataObject data)
     {
+        int before = _board.Pending.Count;
         var result = ReadIntake(data);
         _board.AddPending(result.Items);
         _board.AddPending(await ScanAsync(result.Folders));
         SelectFirstPendingIfNone();
+        return _board.Pending.Count - before;
     }
 
     void OnClearPending(object sender, RoutedEventArgs e)
@@ -535,8 +573,13 @@ public partial class MainWindow : Window
 
     void Navigate(FolderViewModel folder)
     {
+        CancelTile(_newFolder);
+        CancelTile(_newName);
         _current = folder;
         TreePanel.DataContext = folder;
+        // The folder's own items, then the tile that adds one more.
+        FolderList.ItemsSource = new CompositeCollection { new CollectionContainer { Collection = folder.Folders }, _newFolder };
+        CardList.ItemsSource = new CompositeCollection { new CollectionContainer { Collection = folder.Cards }, _newName };
         RefreshBreadcrumb();
         TreeScroll.ScrollToHome();
     }
@@ -768,7 +811,127 @@ public partial class MainWindow : Window
     void OnAddNames(object sender, RoutedEventArgs e)
     {
         var dialog = new NamesDialog(_current.IsRoot ? null : _current.DisplayPath) { Owner = this };
-        if (dialog.ShowDialog() == true) _board.AddNames(dialog.NamesText, _current);
+        if (dialog.ShowDialog() == true) _board.AddNames(dialog.NamesText, _current, dialog.LeavesAreFolders);
+    }
+
+    // ---- "+ New folder" / "+ New name" tiles ----
+
+    static NewTile? TileOf(object sender) => (sender as FrameworkElement)?.DataContext as NewTile;
+
+    /// Stops editing a tile. Files dropped on it from outside go to the tray so they are not lost.
+    void CancelTile(NewTile tile)
+    {
+        if (tile.Waiting is { } waiting) _board.AddPending(waiting);
+        tile.Stop();
+    }
+
+    void OnTileClick(object sender, MouseButtonEventArgs e)
+    {
+        if (TileOf(sender) is { IsEditing: false } tile) tile.Start();
+    }
+
+    void OnTileInputShown(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (sender is TextBox { IsVisible: true } box)
+            Dispatcher.BeginInvoke(() => { box.Focus(); box.SelectAll(); }, DispatcherPriority.Input);
+    }
+
+    void OnTileLostFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (TileOf(sender) is { } tile && tile.Text.Trim().Length == 0 && tile.Waiting is null) tile.Stop();
+    }
+
+    async void OnTileKeyDown(object sender, KeyEventArgs e)
+    {
+        if (TileOf(sender) is not { } tile) return;
+        if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            CancelTile(tile);
+        }
+        else if (e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            await CommitTileAsync(tile, open: Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
+        }
+    }
+
+    /// Creates the folder or name typed in a tile. Files waiting on the tile go into it; otherwise the tile
+    /// stays open for the next one, so a whole list is typed with Enter after each. Ctrl+Enter opens the new folder.
+    async Task CommitTileAsync(NewTile tile, bool open)
+    {
+        var name = tile.Text.Trim();
+        if (name.Length == 0)
+        {
+            CancelTile(tile);
+            return;
+        }
+        var waiting = tile.Waiting;
+        bool keepFolders = tile.KeepFolders;
+        var here = _current;
+        if (tile.IsFolder)
+        {
+            _board.AddNames(name.TrimEnd('/', '\\') + "/", here);
+            var folder = here.GetOrAddPath(name);
+            if (waiting is not null || open) tile.Stop();
+            else tile.Text = "";
+            if (waiting is not null) await PlaceAsync(waiting, folder, keepFolders);
+            if (open) Navigate(folder);
+        }
+        else
+        {
+            // A slash here would make folders: in a name it is just a character the file system refuses.
+            _board.AddNames(name.Replace('/', '-').Replace('\\', '-'), here);
+            var card = here.Cards[^1];
+            if (waiting is [var item])
+            {
+                tile.Stop();
+                await AssignAsync(item, card);
+            }
+            else tile.Text = "";
+        }
+    }
+
+    void OnTileDragOver(object sender, DragEventArgs e)
+    {
+        var tile = TileOf(sender);
+        bool ok = tile is not null && HasFiles(e) && (tile.IsFolder || Dragged(e) is not { Length: > 1 });
+        if (tile is not null) tile.IsDragTarget = ok;
+        e.Effects = ok ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    void OnTileDragLeave(object sender, DragEventArgs e)
+    {
+        if (TileOf(sender) is { } tile && !StillInside(sender, e)) tile.IsDragTarget = false;
+    }
+
+    /// Files dropped on a tile wait there while the user types the new folder's (or name's) name.
+    async void OnTileDrop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        EndSpring();
+        if (TileOf(sender) is not { } tile) return;
+        tile.IsDragTarget = false;
+        List<PendingItem> items;
+        bool keepFolders = false;
+        if (Dragged(e) is { } dragged) items = [.. dragged];
+        else if (FileIntake.CanAccept(e.Data))
+        {
+            var result = ReadIntake(e.Data);
+            items = result.Items.Concat(await ScanAsync(result.Folders)).ToList();
+            keepFolders = result.Folders.Count > 0;
+        }
+        else return;
+        if (items.Count == 0) return;
+        if (!tile.IsFolder && items.Count > 1)
+        {
+            _board.AddPending(items);
+            ShowToast("Un nombre recibe un solo archivo. Para varios, suéltalos en «Nueva carpeta».");
+            return;
+        }
+        CancelTile(tile == _newFolder ? _newName : _newFolder);
+        tile.Start(items, keepFolders);
     }
 
     // ---- Quick bar ----

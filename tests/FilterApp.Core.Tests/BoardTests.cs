@@ -30,7 +30,7 @@ public sealed class BoardTests : IDisposable
     public void AddNames_creates_one_card_per_nonempty_line()
     {
         var b = NewBoard();
-        Assert.Equal(3, b.AddNames("A\r\n\r\n  B  \nC"));
+        Assert.Equal(3, b.AddNames("A\r\n\r\nB  \nC"));
         Assert.Equal(["A", "B", "C"], b.Cards.Select(c => c.Name));
         Assert.All(b.Cards, c => Assert.Equal(CardStatus.Free, c.Status));
     }

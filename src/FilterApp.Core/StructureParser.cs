@@ -1,10 +1,9 @@
 namespace FilterApp.Core;
 
-/// Builds folders and names from pasted text, one entry per line:
-///   "Nombre"            a name (card)
-///   "Carpeta/"          a folder
-///   "A/B/Nombre"        folders A and B with the name inside
-///   indented lines      go inside the closest folder above with less indentation
+/// Builds folders and names from text, one entry per line. No special characters are needed:
+///   a line with indented lines under it   is a folder holding them
+///   any other line                         is a name (or a folder, with <c>leavesAreFolders</c>)
+/// Power users can still write "Carpeta/" (always a folder) or paths like "A/B/Nombre".
 /// Folders that already exist (same name, any case) are reused, never duplicated.
 public static class StructureParser
 {
@@ -13,22 +12,22 @@ public static class StructureParser
         public int Total => Folders + Names;
     }
 
-    public static Result Apply(FolderViewModel into, string text)
+    public static Result Apply(FolderViewModel into, string text, bool leavesAreFolders = false)
     {
         int folders = 0, names = 0;
+        var lines = text.Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Trim().Length > 0)
+                        .Select(l => (Indent: Indent(l), Content: l.Trim())).ToList();
         // Folders opened by previous lines, with the indentation of the line that opened them.
         var open = new Stack<(int Indent, FolderViewModel Folder)>();
 
-        foreach (var raw in text.Split('\n'))
+        for (int i = 0; i < lines.Count; i++)
         {
-            var line = raw.TrimEnd('\r');
-            var content = line.Trim();
-            if (content.Length == 0) continue;
-            int indent = Indent(line);
+            var (indent, content) = lines[i];
             while (open.Count > 0 && open.Peek().Indent >= indent) open.Pop();
             var parent = open.Count > 0 ? open.Peek().Folder : into;
 
-            bool isFolder = content.EndsWith('/') || content.EndsWith('\\');
+            bool hasChildren = i + 1 < lines.Count && lines[i + 1].Indent > indent;
+            bool isFolder = content.EndsWith('/') || content.EndsWith('\\') || hasChildren || leavesAreFolders;
             var parts = content.Split('/', '\\').Select(p => p.Trim()).Where(p => p.Length > 0).ToList();
             if (parts.Count == 0) continue;
             var folderParts = isFolder ? parts : parts[..^1];

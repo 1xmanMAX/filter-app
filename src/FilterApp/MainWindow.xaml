@@ -38,7 +38,14 @@
         <ToggleButton DockPanel.Dock="Left" Style="{StaticResource MoveToggle}" IsChecked="{Binding Move}"
                       Margin="0,0,8,0" VerticalAlignment="Center" Click="OnMoveToggled"/>
         <ToggleButton x:Name="PreviewToggle" DockPanel.Dock="Left" Style="{StaticResource PreviewToggle}" IsChecked="True"
-                      Margin="0,0,12,0" VerticalAlignment="Center" Click="OnPreviewToggled"/>
+                      Margin="0,0,8,0" VerticalAlignment="Center" Click="OnPreviewToggled"/>
+        <Button DockPanel.Dock="Left" Style="{StaticResource FlatButton}" Height="34" Margin="0,0,12,0" VerticalAlignment="Center"
+                Click="OnMini" ToolTip="Bandeja rápida: una ventanita siempre visible para soltar archivos. Se ordenan después.">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="&#xE896;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <TextBlock Text="Mini" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
         <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Foreground="#57606A">
           <Run Text="Pendientes: "/><Run Text="{Binding Pending.Count, Mode=OneWay}" FontWeight="SemiBold"/>
         </TextBlock>
@@ -235,11 +242,11 @@
           <!-- The open folder: subfolders, names and loose files -->
           <ScrollViewer x:Name="TreeScroll" VerticalScrollBarVisibility="Auto">
             <StackPanel x:Name="TreePanel">
-              <ItemsControl ItemsSource="{Binding Folders}">
+              <ItemsControl x:Name="FolderList">
                 <ItemsControl.ItemsPanel>
                   <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
+                <ItemsControl.Resources>
                   <DataTemplate DataType="{x:Type core:FolderViewModel}">
                     <Border x:Name="Card" Width="184" Height="96" Margin="0,0,10,10" Padding="12,10" CornerRadius="8"
                             Background="#FFF8E1" BorderBrush="#E3C46B" BorderThickness="1" Cursor="Hand"
@@ -274,14 +281,49 @@
                       </DataTrigger>
                     </DataTemplate.Triggers>
                   </DataTemplate>
-                </ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="{x:Type local:NewTile}">
+                    <Grid x:Name="Tile" Width="184" Height="96" Margin="0,0,10,10" Background="Transparent" Cursor="Hand"
+                          AllowDrop="True" DragEnter="OnTileDragOver" DragOver="OnTileDragOver" DragLeave="OnTileDragLeave"
+                          Drop="OnTileDrop" MouseLeftButtonUp="OnTileClick">
+                      <Rectangle x:Name="Frame" RadiusX="8" RadiusY="8" Stroke="#AFB8C1" StrokeThickness="1.5" StrokeDashArray="4 3"/>
+                      <StackPanel x:Name="Idle" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Icon}" FontFamily="{StaticResource IconFont}" FontSize="18" Foreground="#6E7781"
+                                   HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                        <TextBlock Foreground="#57606A" HorizontalAlignment="Center">
+                          <Run Text="+ "/><Run Text="{Binding Label, Mode=OneWay}"/>
+                        </TextBlock>
+                      </StackPanel>
+                      <StackPanel x:Name="Edit" Margin="10,0" VerticalAlignment="Center" Visibility="Collapsed">
+                        <TextBlock Text="{Binding Hint}" FontSize="11" Foreground="#57606A" Margin="0,0,0,4" TextTrimming="CharacterEllipsis"/>
+                        <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" Padding="4,3"
+                                 PreviewKeyDown="OnTileKeyDown" LostKeyboardFocus="OnTileLostFocus" IsVisibleChanged="OnTileInputShown"/>
+                      </StackPanel>
+                    </Grid>
+                    <DataTemplate.Triggers>
+                      <DataTrigger Binding="{Binding IsEditing}" Value="True">
+                        <Setter TargetName="Idle" Property="Visibility" Value="Collapsed"/>
+                        <Setter TargetName="Edit" Property="Visibility" Value="Visible"/>
+                        <Setter TargetName="Frame" Property="Stroke" Value="#0969DA"/>
+                        <Setter TargetName="Frame" Property="StrokeDashArray" Value="{x:Null}"/>
+                        <Setter TargetName="Frame" Property="Fill" Value="White"/>
+                      </DataTrigger>
+                      <DataTrigger Binding="{Binding IsDragTarget}" Value="True">
+                        <Setter TargetName="Frame" Property="Fill" Value="#DDF4FF"/>
+                        <Setter TargetName="Frame" Property="Stroke" Value="#0969DA"/>
+                      </DataTrigger>
+                      <Trigger Property="IsMouseOver" Value="True">
+                        <Setter TargetName="Frame" Property="Stroke" Value="#0969DA"/>
+                      </Trigger>
+                    </DataTemplate.Triggers>
+                  </DataTemplate>
+                </ItemsControl.Resources>
               </ItemsControl>
 
-              <ItemsControl ItemsSource="{Binding Cards}">
+              <ItemsControl x:Name="CardList">
                 <ItemsControl.ItemsPanel>
                   <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
+                <ItemsControl.Resources>
                   <DataTemplate DataType="{x:Type core:CardViewModel}">
                     <Border x:Name="Card" Width="184" Height="96" Margin="0,0,10,10" Padding="12,10" CornerRadius="8"
                             Background="White" BorderBrush="#D0D7DE" BorderThickness="1"
@@ -335,7 +377,42 @@
                       </DataTrigger>
                     </DataTemplate.Triggers>
                   </DataTemplate>
-                </ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="{x:Type local:NewTile}">
+                    <Grid x:Name="Tile" Width="184" Height="96" Margin="0,0,10,10" Background="Transparent" Cursor="Hand"
+                          AllowDrop="True" DragEnter="OnTileDragOver" DragOver="OnTileDragOver" DragLeave="OnTileDragLeave"
+                          Drop="OnTileDrop" MouseLeftButtonUp="OnTileClick">
+                      <Rectangle x:Name="Frame" RadiusX="8" RadiusY="8" Stroke="#AFB8C1" StrokeThickness="1.5" StrokeDashArray="4 3"/>
+                      <StackPanel x:Name="Idle" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Icon}" FontFamily="{StaticResource IconFont}" FontSize="18" Foreground="#6E7781"
+                                   HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                        <TextBlock Foreground="#57606A" HorizontalAlignment="Center">
+                          <Run Text="+ "/><Run Text="{Binding Label, Mode=OneWay}"/>
+                        </TextBlock>
+                      </StackPanel>
+                      <StackPanel x:Name="Edit" Margin="10,0" VerticalAlignment="Center" Visibility="Collapsed">
+                        <TextBlock Text="{Binding Hint}" FontSize="11" Foreground="#57606A" Margin="0,0,0,4" TextTrimming="CharacterEllipsis"/>
+                        <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" Padding="4,3"
+                                 PreviewKeyDown="OnTileKeyDown" LostKeyboardFocus="OnTileLostFocus" IsVisibleChanged="OnTileInputShown"/>
+                      </StackPanel>
+                    </Grid>
+                    <DataTemplate.Triggers>
+                      <DataTrigger Binding="{Binding IsEditing}" Value="True">
+                        <Setter TargetName="Idle" Property="Visibility" Value="Collapsed"/>
+                        <Setter TargetName="Edit" Property="Visibility" Value="Visible"/>
+                        <Setter TargetName="Frame" Property="Stroke" Value="#0969DA"/>
+                        <Setter TargetName="Frame" Property="StrokeDashArray" Value="{x:Null}"/>
+                        <Setter TargetName="Frame" Property="Fill" Value="White"/>
+                      </DataTrigger>
+                      <DataTrigger Binding="{Binding IsDragTarget}" Value="True">
+                        <Setter TargetName="Frame" Property="Fill" Value="#DDF4FF"/>
+                        <Setter TargetName="Frame" Property="Stroke" Value="#0969DA"/>
+                      </DataTrigger>
+                      <Trigger Property="IsMouseOver" Value="True">
+                        <Setter TargetName="Frame" Property="Stroke" Value="#0969DA"/>
+                      </Trigger>
+                    </DataTemplate.Triggers>
+                  </DataTemplate>
+                </ItemsControl.Resources>
               </ItemsControl>
 
               <!-- Files dropped on this folder, with their own names -->
@@ -389,7 +466,7 @@
               </StackPanel>
 
               <TextBlock x:Name="EmptyHint" Margin="4,24,4,0" TextWrapping="Wrap" Foreground="#8C959F" TextAlignment="Center"
-                         Text="Vacía. Pulsa «+ Nombres» para pegar nombres o una estructura de carpetas,&#x0a;«Carpeta» para crear una, o suelta archivos aquí.">
+                         Text="Carpeta vacía: usa «+ Nueva carpeta» y «+ Nuevo nombre», o suelta archivos aquí.">
                 <TextBlock.Style>
                   <Style TargetType="TextBlock">
                     <Setter Property="Visibility" Value="Collapsed"/>

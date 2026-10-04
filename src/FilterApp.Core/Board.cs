@@ -110,9 +110,9 @@ public sealed class Board : Observable
     // ---- Building the tree ----
 
     /// Adds names and folders from text (see <see cref="StructureParser"/>). Returns how many were added.
-    public int AddNames(string text, FolderViewModel? into = null)
+    public int AddNames(string text, FolderViewModel? into = null, bool leavesAreFolders = false)
     {
-        var result = StructureParser.Apply(into ?? Root, text);
+        var result = StructureParser.Apply(into ?? Root, text, leavesAreFolders);
         if (result.Total > 0) Changed?.Invoke();
         return result.Total;
     }

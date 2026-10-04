@@ -75,6 +75,51 @@ Cada sesión guarda sus tarjetas, su destino y sus pendientes.
 <br clear="right">
 
 
+## Vista previa 👁
+
+Haz clic en un pendiente y míralo al instante, sin abrir otro programa:
+
+| Tipo | Se ve con |
+|---|---|
+| PDF, SVG, MP3, MP4, WAV… | El motor de Edge (ya viene en Windows 11) |
+| Word, Excel, PowerPoint, Outlook… | La misma vista previa del Explorador (si tienes Office). Sin Office, los Word se muestran como texto |
+| Fotos (JPG, PNG, WEBP, HEIC…) | Al instante y bien orientadas |
+| TXT, CSV, JSON, código, HTML | Como texto |
+| Lo demás | Su miniatura + botón **Abrir** |
+
+Doble clic en un archivo → se abre con su programa.
+
+## Carpetas y niveles 🗂️
+
+Para reorganizar discos completos:
+
+- **Suelta una carpeta entera** en Pendientes: entran todos sus archivos (con subcarpetas) y debajo de cada uno ves de qué carpeta viene.
+- **Crea la estructura de destino** con **+ Nombres**: termina una línea en `/` para crear una carpeta, y usa sangría o rutas:
+  ```
+  Clientes/
+    Juan Perez/
+      DNI
+      Contrato
+  Facturas/2026/
+  ```
+  Con **Copiar estructura de una carpeta…** repites el orden de carpetas que ya tengas.
+- **Clic en una carpeta** para entrar. La ruta de arriba (`Destino › Clientes › Juan`) te lleva de vuelta.
+- **Suelta archivos en una carpeta**: entran con su nombre. **Mantenlos encima** y la carpeta se abre para ir más adentro.
+- **Suelta una carpeta del Explorador sobre una carpeta**: entra entera, con sus subcarpetas.
+- **Varios a la vez**: Ctrl o Shift + clic en Pendientes y arrastra.
+
+### Con el teclado ⌨️
+
+Selecciona un pendiente, **escribe** y pulsa **Enter**:
+
+| Escribes | Pasa |
+|---|---|
+| `juan` | Busca carpetas y nombres en todo el árbol; Enter lo envía al primero |
+| `Clientes/Juan/DNI` | Crea las carpetas que falten y lo guarda como `DNI.pdf` |
+| `Clientes/Juan/` | Crea las carpetas y conserva el nombre del archivo |
+
+Después se selecciona el siguiente pendiente. **Ctrl+Z** deshace, **Ctrl+F** va al buscador, **Retroceso** sube un nivel y **Supr** quita de Pendientes.
+
 ## Botones
 
 | | |
@@ -82,9 +127,13 @@ Cada sesión guarda sus tarjetas, su destino y sus pendientes.
 | 📂 **Sesión** | Crear, cambiar, renombrar o eliminar sesiones (listas guardadas) |
 | 🔓 / 🔒 | Destino automático (sigue al Explorador) / fijo |
 | ⏸ **Retener** | Guarda los archivos en las tarjetas hasta pulsar **Soltar todo aquí** |
-| ✕ en tarjeta verde | Deshacer: borra la copia y libera la tarjeta |
+| 📄 **Copiar** / **Mover** | Copiar deja el original donde está. **Mover** lo saca de su carpeta (en el mismo disco es instantáneo) |
+| 👁 **Vista previa** | Muestra u oculta el panel de vista previa |
+| ↶ **Deshacer** | Deshace lo último (Ctrl+Z). Si se movió, el archivo vuelve a su sitio y a Pendientes |
+| ✕ en tarjeta verde | Deshacer: quita el archivo y libera la tarjeta |
 | ✕ en tarjeta lila | Devuelve el archivo a Pendientes |
-| **Limpiar llenas** | Quita las tarjetas ya completadas |
+| ✏️ / 🗑 en carpeta | Renombrar o quitar la carpeta de la lista (nunca se borra del disco) |
+| **Limpiar llenas** | Quita de la lista lo ya colocado (los archivos se quedan) |
 
 **Acepta:** archivos del Explorador, Telegram, navegador, Outlook e imágenes copiadas.
 

@@ -254,15 +254,15 @@
                         <DockPanel>
                           <TextBlock DockPanel.Dock="Left" Text="&#xE8B7;" FontFamily="{StaticResource IconFont}" FontSize="16"
                                      Foreground="#BF8700" Margin="0,1,8,0"/>
-                          <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" TextTrimming="CharacterEllipsis"/>
+                          <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/>
                         </DockPanel>
                         <DockPanel Grid.Row="1">
                           <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE74D;"
                                   ToolTip="Quitar carpeta de la lista" Click="OnRemoveFolder"/>
                           <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE70F;"
                                   ToolTip="Renombrar" Click="OnRenameFolder"/>
-                          <TextBlock Text="{Binding Summary}" FontSize="12" Foreground="#7D6608"
-                                     TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                          <TextBlock Text="{Binding Summary}" FontSize="12" Foreground="#7D6608" TextWrapping="Wrap" MaxHeight="32"
+                                     TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip="{Binding Summary}"/>
                         </DockPanel>
                       </Grid>
                     </Border>

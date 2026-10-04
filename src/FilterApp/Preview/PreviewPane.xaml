@@ -33,6 +33,9 @@
         <TextBox x:Name="TextView" IsReadOnly="True" BorderThickness="0" Padding="10" Visibility="Collapsed"
                  FontFamily="Cascadia Mono, Consolas" FontSize="12.5" TextWrapping="Wrap"
                  VerticalScrollBarVisibility="Auto" Background="White"/>
+        <!-- Word documents read by the app itself (instant; also when Word cannot show them) -->
+        <FlowDocumentScrollViewer x:Name="DocView" Visibility="Collapsed" IsToolBarVisible="False" Background="#E9EBEE"
+                                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"/>
         <preview:PdfView x:Name="PdfView" Visibility="Collapsed"/>
 
         <!-- Video and audio, played by Windows -->

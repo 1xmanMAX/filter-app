@@ -29,7 +29,7 @@ public partial class PreviewPane : UserControl
     int _version;
     WebView2? _web;
     Task<bool>? _webReady;
-    bool _textDragReady;
+    bool _textDragReady, _docDragReady;
     bool _webShowing, _handlerShowing, _pdfShowing, _mediaShowing, _playing, _seeking;
 
     public PreviewPane()
@@ -41,6 +41,14 @@ public partial class PreviewPane : UserControl
         _mediaClock.Tick += (_, _) => UpdateMediaTime();
         // Hold the middle button (or the left one on images) and drag to move around.
         DragScroll.Attach(ImageScroll, leftButtonToo: true);
+        DocView.IsVisibleChanged += (_, _) =>
+        {
+            if (_docDragReady || !DocView.IsVisible) return;
+            DocView.ApplyTemplate();
+            if (DocView.Template?.FindName("PART_ContentHost", DocView) is not ScrollViewer scroll) return;
+            DragScroll.Attach(scroll, leftButtonToo: false);   // left button selects text
+            _docDragReady = true;
+        };
         TextView.IsVisibleChanged += (_, _) =>
         {
             if (_textDragReady || !TextView.IsVisible) return;
@@ -120,11 +128,10 @@ public partial class PreviewPane : UserControl
                     ShowMedia(path);
                     return;
                 case PreviewKind.Docx:
-                    // The text appears at once; the real layout (Word's previewer) replaces it when ready.
-                    var docText = await Task.Run(() => PreviewText.ReadDocx(path));
+                    // The app's own reading appears at once; Word's exact previewer replaces it when (and if) it can.
+                    await ShowDocumentAsync(path, Current);
                     if (!Current()) return;
-                    ShowText(docText);
-                    Trace(kind, clock, path, "texto");
+                    Trace(kind, clock, path, "documento");
                     if (await ShowHandlerAsync(path, Current)) Trace(kind, clock, path, "formato");
                     return;
                 case PreviewKind.Web:
@@ -140,9 +147,10 @@ public partial class PreviewPane : UserControl
                     break;
             }
         }
-        catch (Exception)
+        catch (Exception e)
         {
             // Unreadable, unsupported codec, damaged file: the thumbnail below is always possible.
+            System.Diagnostics.Trace.WriteLine($"preview error {Path.GetFileName(path)}: {e.GetType().Name} 0x{e.HResult:X8} {e.Message}");
             if (!Current()) return;
             await HideAllAsync();
         }
@@ -185,6 +193,24 @@ public partial class PreviewPane : UserControl
         TextView.Visibility = Visibility.Visible;
     }
 
+    /// A Word document as the app reads it: with headings, styles, lists, tables and pictures. If even that
+    /// fails (damaged file), its plain text.
+    async Task ShowDocumentAsync(string path, Func<bool> current)
+    {
+        try
+        {
+            var blocks = await Task.Run(() => DocxDocument.Read(path));
+            if (!current()) return;
+            DocView.Document = DocxDocument.Build(blocks);
+            DocView.Visibility = Visibility.Visible;
+        }
+        catch (Exception e) when (e is IOException or InvalidDataException or System.Xml.XmlException or UnauthorizedAccessException)
+        {
+            var text = await Task.Run(() => PreviewText.ReadDocx(path));
+            if (current()) ShowText(text);
+        }
+    }
+
     async Task ShowFallbackAsync(string path, Func<bool> current)
     {
         Fallback.Visibility = Visibility.Visible;
@@ -201,6 +227,8 @@ public partial class PreviewPane : UserControl
         ImageScroll.Visibility = Visibility.Collapsed;
         TextView.Text = "";
         TextView.Visibility = Visibility.Collapsed;
+        DocView.Document = null;
+        DocView.Visibility = Visibility.Collapsed;
         Fallback.Visibility = Visibility.Collapsed;
         Thumb.Source = null;
         if (_mediaShowing) StopMedia();
@@ -449,7 +477,7 @@ public partial class PreviewPane : UserControl
     async Task<bool> ShowHandlerAsync(string path, Func<bool> current)
     {
         if (PreviewHandlerHost.HandlerFor(path) is null) return false;
-        if (!TextView.IsVisible)
+        if (!TextView.IsVisible && !DocView.IsVisible)
         {
             Message.Text = "Cargando vista previa…";
             Message.Visibility = Visibility.Visible;
@@ -466,6 +494,7 @@ public partial class PreviewPane : UserControl
         _handlerShowing = true;
         Message.Visibility = Visibility.Collapsed;
         TextView.Visibility = Visibility.Collapsed;
+        DocView.Visibility = Visibility.Collapsed;
         HandlerSlot.Visibility = Visibility.Visible;
         return true;
     }

@@ -45,7 +45,13 @@ public sealed class PreviewHandlerHost : HwndHost
         var hwnd = _hwnd;
         if (hwnd == IntPtr.Zero || HandlerFor(path) is not { } clsid) return Task.FromResult(false);
         Native.GetClientRect(hwnd, out var rect);
-        return Worker.RunAsync(() => Open(path, clsid, hwnd, rect));
+        return Worker.RunAsync(() =>
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            bool ok = Open(path, clsid, hwnd, rect);
+            System.Diagnostics.Trace.WriteLine($"preview handler {(ok ? "ok" : "falló")} en {clock.ElapsedMilliseconds} ms: {Path.GetFileName(path)}");
+            return ok;
+        });
     }
 
     bool Open(string path, Guid clsid, IntPtr hwnd, Native.RECT rect)
@@ -76,8 +82,11 @@ public sealed class PreviewHandlerHost : HwndHost
             _shown = handler;
             return true;
         }
-        catch (Exception e) when (e is COMException or InvalidCastException or UnauthorizedAccessException or IOException)
+        // Handlers report failures with any HRESULT, which .NET turns into many exception types
+        // (E_NOTIMPL becomes NotImplementedException): every one of them just means "cannot show this file".
+        catch (Exception e) when (e is not OutOfMemoryException)
         {
+            System.Diagnostics.Trace.WriteLine($"preview handler {Path.GetFileName(path)}: 0x{e.HResult:X8} {e.Message}");
             _shown = null;
             return ReleaseCached();
         }
@@ -101,7 +110,11 @@ public sealed class PreviewHandlerHost : HwndHost
             else return false;
             return true;
         }
-        catch (COMException) { return false; }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            System.Diagnostics.Trace.WriteLine($"preview handler init {Path.GetFileName(path)}: 0x{e.HResult:X8} {e.Message}");
+            return false;
+        }
     }
 
     /// Out of process first, like Explorer: a handler that crashes takes its host down, not this app.
@@ -127,7 +140,7 @@ public sealed class PreviewHandlerHost : HwndHost
     {
         if (_shown is null) return;
         try { _shown.Unload(); }
-        catch (COMException) { ReleaseCached(); }
+        catch (Exception e) when (e is not OutOfMemoryException) { ReleaseCached(); }
         _shown = null;
         if (_idle is null)
         {
@@ -160,7 +173,7 @@ public sealed class PreviewHandlerHost : HwndHost
         Worker.Post(() =>
         {
             try { _shown?.SetRect(ref rect); }
-            catch (COMException) { }
+            catch (Exception e) when (e is not OutOfMemoryException) { }
         });
     }
 }
@@ -184,7 +197,7 @@ public static class ShellThumbnail
                 return null;
             return ToBitmap(hbitmap);
         }
-        catch (COMException) { return null; }
+        catch (Exception e) when (e is not OutOfMemoryException) { return null; }
         finally
         {
             if (hbitmap != IntPtr.Zero) Native.DeleteObject(hbitmap);

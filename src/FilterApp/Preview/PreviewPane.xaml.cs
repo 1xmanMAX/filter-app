@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -11,28 +12,43 @@ using Microsoft.Web.WebView2.Wpf;
 
 namespace FilterApp.Preview;
 
-/// Shows the selected file: images and text natively, PDF and media with the Edge engine, Office and
-/// other registered types with Windows' preview handlers, and the file's thumbnail for the rest.
+/// Shows the selected file as it really looks, as fast and light as possible:
+/// PDF with PDFium (only the pages on screen), Word/Excel/PowerPoint/Outlook with Windows' preview handlers on a
+/// background thread (a Word document shows its text at once while the real layout loads), video and audio with
+/// Windows' player, images decoded at the size of the pane, text natively. The Edge engine is only a last resort.
 public partial class PreviewPane : UserControl
 {
     static readonly string WebDataDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FilterApp", "WebView2");
 
-    readonly DispatcherTimer _debounce = new() { Interval = TimeSpan.FromMilliseconds(60) };
+    readonly DispatcherTimer _debounce = new() { Interval = TimeSpan.FromMilliseconds(50) };
+    readonly DispatcherTimer _mediaClock = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    readonly PreviewHandlerHost _handler = new();
     string? _requested;
     string? _path;
     int _version;
     WebView2? _web;
     Task<bool>? _webReady;
-    bool _webShowing;
-    PreviewHandlerHost? _handler;
+    bool _textDragReady;
+    bool _webShowing, _handlerShowing, _pdfShowing, _mediaShowing, _playing, _seeking;
 
     public PreviewPane()
     {
         InitializeComponent();
+        HandlerSlot.Content = _handler;
         // Arrowing through a list fires a selection per step: only the one the user stops on is loaded.
         _debounce.Tick += (_, _) => { _debounce.Stop(); Load(_requested); };
-        Unloaded += (_, _) => _handler?.Unload();
+        _mediaClock.Tick += (_, _) => UpdateMediaTime();
+        // Hold the middle button (or the left one on images) and drag to move around.
+        DragScroll.Attach(ImageScroll, leftButtonToo: true);
+        TextView.IsVisibleChanged += (_, _) =>
+        {
+            if (_textDragReady || !TextView.IsVisible) return;
+            TextView.ApplyTemplate();
+            if (TextView.Template?.FindName("PART_ContentHost", TextView) is not ScrollViewer scroll) return;
+            DragScroll.Attach(scroll, leftButtonToo: false);   // left button selects text
+            _textDragReady = true;
+        };
     }
 
     /// The file being shown, if any.
@@ -45,25 +61,25 @@ public partial class PreviewPane : UserControl
         _debounce.Start();
     }
 
-    /// Lets go of the file being shown (a preview handler or the browser may keep it open, which
-    /// would stop it from being moved).
+    /// Lets go of the file being shown: a preview may keep it open, which would stop it from being moved.
     public async Task ReleaseAsync()
     {
         _debounce.Stop();
-        bool hadWeb = _webShowing;
         _path = null;
         _version++;
-        HideAll();
+        await HideAllAsync();
         ShowMessage("Selecciona un archivo para verlo aquí");
-        if (hadWeb) await Task.Delay(80);   // the browser closes the file asynchronously
     }
 
     async void Load(string? path)
     {
-        if (string.Equals(path, _path, StringComparison.OrdinalIgnoreCase) && path is not null) return;
+        if (path is not null && string.Equals(path, _path, StringComparison.OrdinalIgnoreCase)) return;
         _path = path;
         int version = ++_version;
-        HideAll();
+        bool Current() => version == _version;
+        var clock = Stopwatch.StartNew();
+        await HideAllAsync();
+        if (!Current()) return;
 
         if (path is null)
         {
@@ -76,40 +92,67 @@ public partial class PreviewPane : UserControl
             return;
         }
         ShowHeader(path);
+        var kind = PreviewText.Classify(path);
 
         try
         {
-            switch (PreviewText.Classify(path))
+            switch (kind)
             {
                 case PreviewKind.Image:
-                    var image = await Task.Run(() => LoadImage(path));
-                    if (version != _version) return;
-                    ImageView.Source = image;
-                    ImageView.Visibility = Visibility.Visible;
+                    int width = (int)Math.Clamp(Stage.ActualWidth * Dpi, 320, 3000);
+                    var picture = await Task.Run(() => LoadImage(path, width));
+                    if (!Current()) return;
+                    ShowImage(picture);
+                    Trace(kind, clock, path);
                     return;
                 case PreviewKind.Text:
-                    ShowText(await Task.Run(() => PreviewText.ReadText(path)), version);
+                    var text = await Task.Run(() => PreviewText.ReadText(path));
+                    if (Current()) ShowText(text);
+                    Trace(kind, clock, path);
+                    return;
+                case PreviewKind.Pdf:
+                    PdfView.Visibility = Visibility.Visible;
+                    _pdfShowing = true;
+                    await PdfView.OpenAsync(path, Current);
+                    Trace(kind, clock, path);
+                    return;
+                case PreviewKind.Media:
+                    ShowMedia(path);
                     return;
                 case PreviewKind.Docx:
-                    if (ShowHandler(path)) return;
-                    ShowText(await Task.Run(() => PreviewText.ReadDocx(path)), version);
+                    // The text appears at once; the real layout (Word's previewer) replaces it when ready.
+                    var docText = await Task.Run(() => PreviewText.ReadDocx(path));
+                    if (!Current()) return;
+                    ShowText(docText);
+                    Trace(kind, clock, path, "texto");
+                    if (await ShowHandlerAsync(path, Current)) Trace(kind, clock, path, "formato");
                     return;
                 case PreviewKind.Web:
-                    if (await ShowWebAsync(path, version) || version != _version) return;
+                    if (await ShowWebAsync(path, Current) || !Current()) return;
                     break;
                 default:
-                    if (ShowHandler(path)) return;
+                    if (await ShowHandlerAsync(path, Current))
+                    {
+                        Trace(kind, clock, path, "formato");
+                        return;
+                    }
+                    if (!Current()) return;
                     break;
             }
         }
         catch (Exception)
         {
             // Unreadable, unsupported codec, damaged file: the thumbnail below is always possible.
-            if (version != _version) return;
-            HideAll();
+            if (!Current()) return;
+            await HideAllAsync();
         }
-        ShowFallback(path);
+        if (Current()) await ShowFallbackAsync(path, Current);
     }
+
+    static void Trace(PreviewKind kind, Stopwatch clock, string path, string what = "") =>
+        System.Diagnostics.Trace.WriteLine($"preview {kind} {what} {clock.ElapsedMilliseconds} ms {Path.GetFileName(path)}");
+
+    double Dpi => VisualTreeHelper.GetDpi(this).DpiScaleX;
 
     void ShowHeader(string path)
     {
@@ -135,60 +178,166 @@ public partial class PreviewPane : UserControl
         Message.Visibility = Visibility.Visible;
     }
 
-    void ShowText(string text, int version)
+    void ShowText(string text)
     {
-        if (version != _version) return;
         TextView.Text = text;
         TextView.ScrollToHome();
         TextView.Visibility = Visibility.Visible;
     }
 
-    void ShowFallback(string path)
+    async Task ShowFallbackAsync(string path, Func<bool> current)
     {
-        Thumb.Source = ShellThumbnail.Get(path, 256);
         Fallback.Visibility = Visibility.Visible;
+        var thumb = await ShellThumbnail.GetAsync(path, 256);
+        if (current()) Thumb.Source = thumb;
     }
 
-    void HideAll()
+    /// Hides everything and lets go of every file. Awaiting it guarantees no preview keeps a file open.
+    async Task HideAllAsync()
     {
         Message.Visibility = Visibility.Collapsed;
+        Loading.Visibility = Visibility.Collapsed;
         ImageView.Source = null;
-        ImageView.Visibility = Visibility.Collapsed;
+        ImageScroll.Visibility = Visibility.Collapsed;
         TextView.Text = "";
         TextView.Visibility = Visibility.Collapsed;
         Fallback.Visibility = Visibility.Collapsed;
         Thumb.Source = null;
-        _handler?.Unload();
-        HandlerSlot.Visibility = Visibility.Collapsed;
+        if (_mediaShowing) StopMedia();
         if (_webShowing && _web?.CoreWebView2 is { } core)
         {
-            core.Navigate("about:blank");   // stops audio/video and closes the file
+            core.Navigate("about:blank");   // stops playback and closes the file
             _webShowing = false;
         }
         WebSlot.Visibility = Visibility.Collapsed;
+        if (_pdfShowing)
+        {
+            _pdfShowing = false;
+            PdfView.Visibility = Visibility.Collapsed;
+            await PdfView.CloseAsync();
+        }
+        if (_handlerShowing)
+        {
+            _handlerShowing = false;
+            HandlerSlot.Visibility = Visibility.Hidden;
+            await _handler.UnloadAsync();
+        }
     }
 
     // ---- Images ----
 
-    /// Decoded off the UI thread, scaled down to screen size, and turned upright like Explorer does
-    /// for phone photos.
-    static BitmapSource LoadImage(string path)
+    /// A decoded image and the full size of the original, upright, in pixels.
+    sealed record Picture(BitmapSource Image, int Width, int Height);
+
+    Picture? _picture;
+    /// 1 = fitted to the pane; more = zoomed in.
+    double _imageZoom = 1;
+    bool _imageUpgrading;
+
+    void ShowImage(Picture picture)
+    {
+        _picture = picture;
+        _imageZoom = 1;
+        _imageUpgrading = false;
+        ImageView.Source = picture.Image;
+        ImageScroll.Visibility = Visibility.Visible;
+        LayoutImage();
+    }
+
+    /// Scale that fits the whole image in the pane; never above 1 (small images are not blown up).
+    double FitScale
+    {
+        get
+        {
+            if (_picture is null) return 1;
+            double dpi = Dpi;
+            return Math.Min(1, Math.Min((ImageScroll.ActualWidth - 16) * dpi / _picture.Width,
+                                        (ImageScroll.ActualHeight - 16) * dpi / _picture.Height));
+        }
+    }
+
+    void LayoutImage()
+    {
+        if (_picture is null || ImageView.Source is null) return;
+        double scale = Math.Max(0.01, FitScale) * _imageZoom / Dpi;
+        ImageView.Width = _picture.Width * scale;
+        ImageView.Height = _picture.Height * scale;
+        UpgradeImageIfBlurry();
+    }
+
+    /// Zooms so the point under the mouse stays under the mouse.
+    void ZoomImageAt(double zoom, MouseEventArgs e)
+    {
+        if (_picture is null) return;
+        var onImage = e.GetPosition(ImageView);
+        double relX = onImage.X / Math.Max(1, ImageView.Width), relY = onImage.Y / Math.Max(1, ImageView.Height);
+        var mouse = e.GetPosition(ImageScroll);
+        _imageZoom = Math.Clamp(zoom, 1, Math.Max(1, 8 / Math.Max(0.01, FitScale)));
+        LayoutImage();
+        ImageScroll.UpdateLayout();
+        ImageScroll.ScrollToHorizontalOffset(relX * ImageView.Width - mouse.X);
+        ImageScroll.ScrollToVerticalOffset(relY * ImageView.Height - mouse.Y);
+    }
+
+    void OnImageWheel(object sender, MouseWheelEventArgs e)
+    {
+        e.Handled = true;
+        ZoomImageAt(_imageZoom * (e.Delta > 0 ? 1.25 : 1 / 1.25), e);
+    }
+
+    void OnImageDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return;
+        e.Handled = true;
+        // Fitted → real size (or twice, for a small image); zoomed → fitted again.
+        ZoomImageAt(_imageZoom > 1.001 ? 1 : FitScale < 0.999 ? 1 / FitScale : 2, e);
+    }
+
+    void OnImageAreaResized(object sender, SizeChangedEventArgs e) => LayoutImage();
+
+    /// The image was decoded at pane size to save memory: zooming past that decodes it again, sharper.
+    async void UpgradeImageIfBlurry()
+    {
+        if (_picture is not { } picture || _imageUpgrading || _path is not { } path) return;
+        int needed = (int)(ImageView.Width * Dpi);
+        if (needed <= picture.Image.PixelWidth * 1.1 || picture.Image.PixelWidth >= picture.Width) return;
+        _imageUpgrading = true;
+        int version = _version;
+        try
+        {
+            var sharper = await Task.Run(() => LoadImage(path, Math.Min(picture.Width, 8000)));
+            if (version != _version || _picture != picture) return;
+            _picture = sharper;
+            ImageView.Source = sharper.Image;
+        }
+        catch (Exception) { /* keep the softer one */ }
+    }
+
+    /// Decoded off the UI thread at the size it is shown (a 48-megapixel photo does not need 190 MB),
+    /// and turned upright like Explorer does for phone photos.
+    static Picture LoadImage(string path, int maxWidth)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         var frame = BitmapDecoder.Create(stream, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None).Frames[0];
-        int width = frame.PixelWidth;
         double angle = Orientation(frame.Metadata as BitmapMetadata);
+        // Turned a quarter, the stored height is what ends up across the pane.
+        int across = angle is 90 or 270 ? frame.PixelHeight : frame.PixelWidth;
+        int down = angle is 90 or 270 ? frame.PixelWidth : frame.PixelHeight;
         stream.Position = 0;
 
         var bitmap = new BitmapImage();
         bitmap.BeginInit();
         bitmap.CacheOption = BitmapCacheOption.OnLoad;
         bitmap.StreamSource = stream;
-        if (width > 2400) bitmap.DecodePixelWidth = 2400;
+        if (across > maxWidth)
+        {
+            if (angle is 90 or 270) bitmap.DecodePixelHeight = maxWidth;
+            else bitmap.DecodePixelWidth = maxWidth;
+        }
         bitmap.EndInit();
         BitmapSource result = angle == 0 ? bitmap : new TransformedBitmap(bitmap, new RotateTransform(angle));
         result.Freeze();
-        return result;
+        return new Picture(result, across, down);
     }
 
     static double Orientation(BitmapMetadata? metadata)
@@ -209,9 +358,121 @@ public partial class PreviewPane : UserControl
         }
     }
 
-    // ---- Edge engine: PDF, SVG, audio, video ----
+    // ---- Video and audio ----
 
-    async Task<bool> ShowWebAsync(string path, int version)
+    static readonly HashSet<string> AudioExtensions = new([".mp3", ".m4a", ".wav", ".wma", ".aac", ".flac"], StringComparer.OrdinalIgnoreCase);
+    static readonly Brush AudioBackground = new SolidColorBrush(Color.FromRgb(0x2D, 0x33, 0x3B));
+
+    void ShowMedia(string path)
+    {
+        _mediaShowing = true;
+        _playing = false;
+        PlayButton.Content = "";
+        // Windows only says a file has no picture once it plays: the extension tells it sooner.
+        bool audio = AudioExtensions.Contains(Path.GetExtension(path));
+        AudioIcon.Visibility = audio ? Visibility.Visible : Visibility.Collapsed;
+        MediaView.Background = audio ? AudioBackground : Brushes.Black;
+        TimeText.Text = "0:00";
+        Seek.Value = 0;
+        MediaView.Visibility = Visibility.Visible;
+        Player.Source = new Uri(path);
+        Player.Pause();   // opens it and shows the first frame, without sound until the user presses play
+    }
+
+    void StopMedia()
+    {
+        _mediaShowing = false;
+        _playing = false;
+        _mediaClock.Stop();
+        Player.Stop();
+        Player.Close();
+        Player.Source = null;
+        MediaView.Visibility = Visibility.Collapsed;
+    }
+
+    void OnMediaOpened(object sender, RoutedEventArgs e)
+    {
+        AudioIcon.Visibility = Player.HasVideo ? Visibility.Collapsed : Visibility.Visible;
+        Seek.Maximum = Player.NaturalDuration.HasTimeSpan ? Player.NaturalDuration.TimeSpan.TotalSeconds : 0;
+        UpdateMediaTime();
+        if (_path is not null) System.Diagnostics.Trace.WriteLine($"preview Media opened {Path.GetFileName(_path)}");
+    }
+
+    void OnMediaEnded(object sender, RoutedEventArgs e)
+    {
+        _playing = false;
+        _mediaClock.Stop();
+        Player.Pause();
+        Player.Position = TimeSpan.Zero;
+        PlayButton.Content = "";
+        UpdateMediaTime();
+    }
+
+    async void OnMediaFailed(object sender, ExceptionRoutedEventArgs e)
+    {
+        // A codec Windows lacks: the Edge engine may still play it; if not, the thumbnail.
+        if (_path is not { } path) return;
+        int version = _version;
+        bool Current() => version == _version;
+        StopMedia();
+        if (!await ShowWebAsync(path, Current) && Current()) await ShowFallbackAsync(path, Current);
+    }
+
+    void OnPlayPause(object sender, RoutedEventArgs e)
+    {
+        if (!_mediaShowing) return;
+        _playing = !_playing;
+        if (_playing) { Player.Play(); _mediaClock.Start(); }
+        else { Player.Pause(); _mediaClock.Stop(); }
+        PlayButton.Content = _playing ? "" : "";
+    }
+
+    void OnSeek(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_seeking || !_mediaShowing) return;
+        Player.Position = TimeSpan.FromSeconds(Seek.Value);
+        UpdateMediaTime();
+    }
+
+    void UpdateMediaTime()
+    {
+        if (!_mediaShowing) return;
+        _seeking = true;
+        Seek.Value = Player.Position.TotalSeconds;
+        _seeking = false;
+        var total = Player.NaturalDuration.HasTimeSpan ? Player.NaturalDuration.TimeSpan : TimeSpan.Zero;
+        TimeText.Text = $"{Player.Position:m\\:ss} / {total:m\\:ss}";
+    }
+
+    // ---- Windows preview handlers: Word, Excel, PowerPoint, Outlook… ----
+
+    async Task<bool> ShowHandlerAsync(string path, Func<bool> current)
+    {
+        if (PreviewHandlerHost.HandlerFor(path) is null) return false;
+        if (!TextView.IsVisible)
+        {
+            Message.Text = "Cargando vista previa…";
+            Message.Visibility = Visibility.Visible;
+        }
+        Loading.Visibility = Visibility.Visible;
+        bool ok = await _handler.OpenAsync(path);
+        if (!current())
+        {
+            if (ok) await _handler.UnloadAsync();
+            return true;   // the user moved on: nothing else to show for this file
+        }
+        Loading.Visibility = Visibility.Collapsed;
+        if (!ok) return false;
+        _handlerShowing = true;
+        Message.Visibility = Visibility.Collapsed;
+        TextView.Visibility = Visibility.Collapsed;
+        HandlerSlot.Visibility = Visibility.Visible;
+        return true;
+    }
+
+    // ---- Edge engine: only for what nothing else shows (SVG, WebM, Ogg) ----
+
+    async Task<bool> ShowWebAsync(string path, Func<bool> current)
     {
         if (_web is null)
         {
@@ -225,11 +486,8 @@ public partial class PreviewPane : UserControl
             WebSlot.Visibility = Visibility.Collapsed;
             return false;
         }
-        if (version != _version) return true;
-
-        var uri = new Uri(path).AbsoluteUri;
-        if (path.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) uri += "#view=FitH";
-        _web.CoreWebView2.Navigate(uri);
+        if (!current()) return true;
+        _web.CoreWebView2.Navigate(new Uri(path).AbsoluteUri);
         _webShowing = true;
         return true;
     }
@@ -243,8 +501,7 @@ public partial class PreviewPane : UserControl
             var core = web.CoreWebView2;
             core.Settings.AreDevToolsEnabled = false;
             core.Settings.IsStatusBarEnabled = false;
-            core.Settings.IsZoomControlEnabled = true;
-            // Only local files are shown; links inside a PDF never open pages in here or in new windows.
+            // Only local files are shown; nothing opens pages in here or in new windows.
             core.NavigationStarting += (_, e) =>
             {
                 if (!e.Uri.StartsWith("file:", StringComparison.OrdinalIgnoreCase) && e.Uri != "about:blank") e.Cancel = true;
@@ -254,26 +511,8 @@ public partial class PreviewPane : UserControl
         }
         catch (Exception)
         {
-            // No WebView2 runtime (very old Windows 10): fall back to preview handlers and thumbnails.
-            return false;
+            return false;   // no WebView2 runtime: the thumbnail is shown instead
         }
-    }
-
-    // ---- Windows preview handlers: Word, Excel, PowerPoint, Outlook… ----
-
-    bool ShowHandler(string path)
-    {
-        if (PreviewHandlerHost.HandlerFor(path) is null) return false;
-        if (_handler is null)
-        {
-            _handler = new PreviewHandlerHost();
-            HandlerSlot.Content = _handler;
-        }
-        HandlerSlot.Visibility = Visibility.Visible;
-        UpdateLayout();   // the host window must exist and have its size before the handler draws in it
-        if (_handler.Open(path)) return true;
-        HandlerSlot.Visibility = Visibility.Collapsed;
-        return false;
     }
 
     void OnOpen(object sender, RoutedEventArgs e)

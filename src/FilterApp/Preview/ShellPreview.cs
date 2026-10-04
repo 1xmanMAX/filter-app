@@ -11,10 +11,21 @@ namespace FilterApp.Preview;
 
 /// Hosts a Windows preview handler: the component Explorer's preview pane uses for Word, Excel,
 /// PowerPoint, Outlook messages and anything else an installed app registered.
+/// The handler lives on <see cref="Worker"/>, so loading a heavy document never freezes the window, and it is
+/// kept for the next file of the same type (opening Word's previewer is the slow part). An idle handler is
+/// let go after a while so it does not hold memory.
 public sealed class PreviewHandlerHost : HwndHost
 {
-    IPreviewHandler? _handler;
+    /// Runs every preview handler and shell thumbnail call.
+    public static StaWorker Worker { get; } = new("Preview");
+    static readonly TimeSpan KeepIdle = TimeSpan.FromSeconds(45);
+
     IntPtr _hwnd;
+    // Only touched on the worker thread:
+    IPreviewHandler? _shown;
+    object? _cached;
+    Guid _cachedClsid;
+    System.Windows.Threading.DispatcherTimer? _idle;
 
     /// The handler registered for this file type, if any.
     public static Guid? HandlerFor(string path)
@@ -28,16 +39,54 @@ public sealed class PreviewHandlerHost : HwndHost
         return hr == 0 && Guid.TryParse(text.ToString(), out var clsid) ? clsid : null;
     }
 
-    /// Shows the file. Returns false if no handler could open it.
-    public bool Open(string path)
+    /// Shows the file in this host. False if no handler could open it.
+    public Task<bool> OpenAsync(string path)
+    {
+        var hwnd = _hwnd;
+        if (hwnd == IntPtr.Zero || HandlerFor(path) is not { } clsid) return Task.FromResult(false);
+        Native.GetClientRect(hwnd, out var rect);
+        return Worker.RunAsync(() => Open(path, clsid, hwnd, rect));
+    }
+
+    bool Open(string path, Guid clsid, IntPtr hwnd, Native.RECT rect)
     {
         Unload();
-        if (HandlerFor(path) is not { } clsid || _hwnd == IntPtr.Zero) return false;
-        object? handler = null;
+        _idle?.Stop();
         try
         {
-            handler = Create(clsid);
-            if (handler is null) return false;
+            bool reused = _cached is not null && _cachedClsid == clsid;
+            if (!reused)
+            {
+                ReleaseCached();
+                _cached = Create(clsid);
+                _cachedClsid = clsid;
+                if (_cached is null) return false;
+            }
+            if (!Initialize(_cached!, path))
+            {
+                if (!reused) return ReleaseCached();
+                // Some handlers can only be initialized once: start a fresh one.
+                ReleaseCached();
+                _cached = Create(clsid);
+                if (_cached is null || !Initialize(_cached, path)) return ReleaseCached();
+            }
+            var handler = (IPreviewHandler)_cached!;
+            handler.SetWindow(hwnd, ref rect);
+            handler.DoPreview();
+            _shown = handler;
+            return true;
+        }
+        catch (Exception e) when (e is COMException or InvalidCastException or UnauthorizedAccessException or IOException)
+        {
+            _shown = null;
+            return ReleaseCached();
+        }
+    }
+
+    static bool Initialize(object handler, string path)
+    {
+        try
+        {
             if (handler is IInitializeWithFile withFile) withFile.Initialize(path, Native.STGM_READ);
             else if (handler is IInitializeWithStream withStream)
             {
@@ -49,19 +98,10 @@ public sealed class PreviewHandlerHost : HwndHost
                 Native.CreateShellItem(path, out var item);
                 withItem.Initialize(item, Native.STGM_READ);
             }
-            else return Release(handler);
-
-            _handler = (IPreviewHandler)handler;
-            var rect = ClientRect();
-            _handler.SetWindow(_hwnd, ref rect);
-            _handler.DoPreview();
+            else return false;
             return true;
         }
-        catch (Exception e) when (e is COMException or InvalidCastException or UnauthorizedAccessException or IOException)
-        {
-            _handler = null;
-            return Release(handler);
-        }
+        catch (COMException) { return false; }
     }
 
     /// Out of process first, like Explorer: a handler that crashes takes its host down, not this app.
@@ -72,25 +112,30 @@ public sealed class PreviewHandlerHost : HwndHost
         return Native.CoCreateInstance(ref clsid, IntPtr.Zero, Native.CLSCTX_INPROC_SERVER, ref unknown, out obj) == 0 ? obj : null;
     }
 
-    static bool Release(object? handler)
+    bool ReleaseCached()
     {
-        if (handler is not null && Marshal.IsComObject(handler)) Marshal.FinalReleaseComObject(handler);
+        if (_cached is not null && Marshal.IsComObject(_cached)) Marshal.FinalReleaseComObject(_cached);
+        _cached = null;
+        _shown = null;
         return false;
     }
 
-    public void Unload()
-    {
-        if (_handler is null) return;
-        try { _handler.Unload(); }
-        catch (COMException) { }
-        Release(_handler);
-        _handler = null;
-    }
+    /// Stops showing the file and lets go of it (the handler itself is kept for a while for the next one).
+    public Task UnloadAsync() => Worker.RunAsync(Unload);
 
-    Native.RECT ClientRect()
+    void Unload()
     {
-        Native.GetClientRect(_hwnd, out var rect);
-        return rect;
+        if (_shown is null) return;
+        try { _shown.Unload(); }
+        catch (COMException) { ReleaseCached(); }
+        _shown = null;
+        if (_idle is null)
+        {
+            _idle = new System.Windows.Threading.DispatcherTimer { Interval = KeepIdle };
+            _idle.Tick += (_, _) => { _idle.Stop(); if (_shown is null) ReleaseCached(); };
+        }
+        _idle.Stop();
+        _idle.Start();
     }
 
     protected override HandleRef BuildWindowCore(HandleRef hwndParent)
@@ -102,7 +147,7 @@ public sealed class PreviewHandlerHost : HwndHost
 
     protected override void DestroyWindowCore(HandleRef hwnd)
     {
-        Unload();
+        Worker.Run(() => { Unload(); ReleaseCached(); });
         Native.DestroyWindow(hwnd.Handle);
         _hwnd = IntPtr.Zero;
     }
@@ -110,17 +155,24 @@ public sealed class PreviewHandlerHost : HwndHost
     protected override void OnWindowPositionChanged(Rect rcBoundingBox)
     {
         base.OnWindowPositionChanged(rcBoundingBox);
-        if (_handler is null) return;
-        var rect = ClientRect();
-        try { _handler.SetRect(ref rect); }
-        catch (COMException) { }
+        if (_hwnd == IntPtr.Zero) return;
+        Native.GetClientRect(_hwnd, out var rect);
+        Worker.Post(() =>
+        {
+            try { _shown?.SetRect(ref rect); }
+            catch (COMException) { }
+        });
     }
 }
 
 /// The picture Explorer shows for a file: a thumbnail of its content, or its icon.
 public static class ShellThumbnail
 {
-    public static BitmapSource? Get(string path, int size)
+    /// Made on the preview thread: some thumbnails come from the same slow handlers as previews.
+    public static Task<BitmapSource?> GetAsync(string path, int size) =>
+        PreviewHandlerHost.Worker.RunAsync(() => Get(path, size));
+
+    static BitmapSource? Get(string path, int size)
     {
         var iid = typeof(IShellItemImageFactory).GUID;
         if (Native.SHCreateItemFromParsingName(path, IntPtr.Zero, ref iid, out var obj) != 0) return null;

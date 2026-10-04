@@ -4,7 +4,7 @@ using System.Xml;
 
 namespace FilterApp.Core;
 
-public enum PreviewKind { Image, Text, Web, Docx, Other }
+public enum PreviewKind { Image, Text, Pdf, Media, Web, Docx, Other }
 
 /// Decides how a file is previewed, and reads the text of the ones shown as text.
 public static class PreviewText
@@ -17,10 +17,12 @@ public static class PreviewText
                                                 ".xml", ".yaml", ".yml", ".ini", ".cfg", ".conf", ".toml", ".sql",
                                                 ".cs", ".js", ".ts", ".py", ".java", ".c", ".cpp", ".h", ".css",
                                                 ".bat", ".cmd", ".ps1", ".sh", ".srt", ".vtt", ".tex", ".bib", ".htm", ".html");
-    /// Shown by the Edge engine: documents, vector images and media it plays by itself. Web pages are shown
-    /// as text on purpose: rendering them would run their scripts.
-    static readonly HashSet<string> Web = Set(".pdf", ".svg", ".mp4", ".m4v", ".webm", ".mp3", ".m4a",
-                                              ".wav", ".ogg", ".oga", ".opus", ".aac", ".flac");
+    /// Played by Windows itself (Media Foundation).
+    static readonly HashSet<string> Media = Set(".mp4", ".m4v", ".mov", ".wmv", ".avi", ".mkv", ".3gp", ".mp3", ".m4a",
+                                                ".wav", ".wma", ".aac", ".flac");
+    /// Only the Edge engine shows these. Web pages are shown as text on purpose: rendering them would run
+    /// their scripts.
+    static readonly HashSet<string> Web = Set(".svg", ".webm", ".ogg", ".oga", ".opus");
 
     static HashSet<string> Set(params string[] items) => new(items, StringComparer.OrdinalIgnoreCase);
 
@@ -29,6 +31,8 @@ public static class PreviewText
         var ext = Path.GetExtension(path);
         if (Images.Contains(ext)) return PreviewKind.Image;
         if (Texts.Contains(ext)) return PreviewKind.Text;
+        if (ext.Equals(".pdf", StringComparison.OrdinalIgnoreCase)) return PreviewKind.Pdf;
+        if (Media.Contains(ext)) return PreviewKind.Media;
         if (Web.Contains(ext)) return PreviewKind.Web;
         if (ext.Equals(".docx", StringComparison.OrdinalIgnoreCase)) return PreviewKind.Docx;
         return PreviewKind.Other;

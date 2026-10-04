@@ -1,6 +1,7 @@
 <UserControl x:Class="FilterApp.Preview.PreviewPane"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:preview="clr-namespace:FilterApp.Preview">
   <Border Background="White" CornerRadius="8" BorderBrush="#D0D7DE" BorderThickness="1">
     <DockPanel>
       <DockPanel DockPanel.Dock="Top" Margin="12,8,8,8">
@@ -12,21 +13,46 @@
             <TextBlock Text="Abrir" VerticalAlignment="Center"/>
           </StackPanel>
         </Button>
+        <TextBlock x:Name="Loading" DockPanel.Dock="Right" Text="cargando formato…" FontSize="12" Foreground="#9A6700"
+                   VerticalAlignment="Center" Margin="0,0,10,0" Visibility="Collapsed"/>
         <StackPanel VerticalAlignment="Center" Margin="0,0,8,0">
           <TextBlock x:Name="Title" Text="VISTA PREVIA" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
           <TextBlock x:Name="Details" FontSize="12" Foreground="#57606A" TextTrimming="CharacterEllipsis"/>
         </StackPanel>
       </DockPanel>
-      <Grid ClipToBounds="True" Background="#FAFBFC">
+      <Grid x:Name="Stage" ClipToBounds="True" Background="#FAFBFC">
         <TextBlock x:Name="Message" Text="Selecciona un archivo para verlo aquí" TextAlignment="Center"
                    TextWrapping="Wrap" Margin="24" VerticalAlignment="Center" Foreground="#8C959F"/>
-        <Image x:Name="ImageView" Stretch="Uniform" StretchDirection="DownOnly" Margin="8" Visibility="Collapsed"
-               RenderOptions.BitmapScalingMode="HighQuality"/>
+        <!-- Wheel: zoom where the mouse is · drag: move · double-click: fit / real size -->
+        <ScrollViewer x:Name="ImageScroll" Visibility="Collapsed" Focusable="False"
+                      HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"
+                      PreviewMouseWheel="OnImageWheel" MouseDoubleClick="OnImageDoubleClick" SizeChanged="OnImageAreaResized">
+          <Image x:Name="ImageView" Stretch="Fill" HorizontalAlignment="Center" VerticalAlignment="Center"
+                 RenderOptions.BitmapScalingMode="HighQuality"/>
+        </ScrollViewer>
         <TextBox x:Name="TextView" IsReadOnly="True" BorderThickness="0" Padding="10" Visibility="Collapsed"
                  FontFamily="Cascadia Mono, Consolas" FontSize="12.5" TextWrapping="Wrap"
                  VerticalScrollBarVisibility="Auto" Background="White"/>
+        <preview:PdfView x:Name="PdfView" Visibility="Collapsed"/>
+
+        <!-- Video and audio, played by Windows -->
+        <Grid x:Name="MediaView" Visibility="Collapsed" Background="Black">
+          <MediaElement x:Name="Player" LoadedBehavior="Manual" UnloadedBehavior="Close" ScrubbingEnabled="True"
+                        Stretch="Uniform" MediaOpened="OnMediaOpened" MediaEnded="OnMediaEnded" MediaFailed="OnMediaFailed"
+                        MouseLeftButtonUp="OnPlayPause"/>
+          <TextBlock x:Name="AudioIcon" Text="&#xE8D6;" FontFamily="{StaticResource IconFont}" FontSize="72" Foreground="#8C959F"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False"/>
+          <DockPanel VerticalAlignment="Bottom" Background="#CC24292F" Height="40">
+            <Button x:Name="PlayButton" DockPanel.Dock="Left" Style="{StaticResource IconButton}" Foreground="White" FontSize="16"
+                    Content="&#xE768;" Margin="6,0" Click="OnPlayPause" ToolTip="Reproducir / pausa"/>
+            <TextBlock x:Name="TimeText" DockPanel.Dock="Right" Foreground="White" FontSize="12" VerticalAlignment="Center" Margin="8,0,12,0"/>
+            <Slider x:Name="Seek" VerticalAlignment="Center" IsMoveToPointEnabled="True" ValueChanged="OnSeek"/>
+          </DockPanel>
+        </Grid>
+
         <ContentControl x:Name="WebSlot" Visibility="Collapsed"/>
-        <ContentControl x:Name="HandlerSlot" Visibility="Collapsed"/>
+        <!-- Hidden (not collapsed): the handler's window must exist and have its size before it is shown -->
+        <ContentControl x:Name="HandlerSlot" Visibility="Hidden"/>
         <StackPanel x:Name="Fallback" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="24" Visibility="Collapsed">
           <Image x:Name="Thumb" MaxWidth="200" MaxHeight="200" Margin="0,0,0,12"/>
           <TextBlock TextAlignment="Center" TextWrapping="Wrap" Foreground="#57606A"

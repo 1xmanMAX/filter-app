@@ -1,0 +1,35 @@
+<UserControl x:Class="FilterApp.Preview.PdfView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:preview="clr-namespace:FilterApp.Preview">
+  <Grid Background="#E9EBEE">
+    <ItemsControl x:Name="Pages" Focusable="False"
+                  VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Standard"
+                  VirtualizingPanel.ScrollUnit="Pixel" ScrollViewer.CanContentScroll="True">
+      <ItemsControl.Template>
+        <ControlTemplate TargetType="ItemsControl">
+          <ScrollViewer x:Name="Scroll" Focusable="False" HorizontalScrollBarVisibility="Auto"
+                        VerticalScrollBarVisibility="Auto" ScrollChanged="OnScrollChanged">
+            <ItemsPresenter Margin="0,4"/>
+          </ScrollViewer>
+        </ControlTemplate>
+      </ItemsControl.Template>
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate DataType="{x:Type preview:PdfPage}">
+          <Border Width="{Binding DisplayWidth}" Height="{Binding DisplayHeight}" Margin="12,6" HorizontalAlignment="Center"
+                  Background="White" BorderBrush="#D0D7DE" BorderThickness="1"
+                  Loaded="OnPageLoaded" Unloaded="OnPageUnloaded">
+            <Image Source="{Binding Image}" Stretch="Fill" RenderOptions.BitmapScalingMode="HighQuality"/>
+          </Border>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+    <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,22,12" Padding="10,3" CornerRadius="10"
+            Background="#B024292F" IsHitTestVisible="False">
+      <TextBlock x:Name="PageText" Foreground="White" FontSize="12"/>
+    </Border>
+  </Grid>
+</UserControl>

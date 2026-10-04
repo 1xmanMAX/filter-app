@@ -47,7 +47,8 @@ flowchart LR
 12. [Ejemplo 2: reorganizar un disco entero](#ejemplo-2-reorganizar-un-disco-entero)
 13. [Deshacer y seguridad](#deshacer-y-seguridad)
 14. [Atajos de teclado y botones](#atajos-de-teclado-y-botones)
-15. [Preguntas frecuentes](#preguntas-frecuentes)
+15. [Consejos para ir más rápido](#consejos-para-ir-más-rápido)
+16. [Preguntas frecuentes](#preguntas-frecuentes)
 
 ---
 
@@ -412,6 +413,33 @@ flowchart TD
 
 ---
 
+## Consejos para ir más rápido
+
+**Antes de empezar**
+
+- 🔒 **Fija el destino** al empezar. Así, aunque abras otras carpetas en el Explorador, todo sigue yendo al mismo sitio.
+- 📝 **Escribe la estructura primero** con **+ Nombres**. Cinco minutos de lista te ahorran horas de arrastrar.
+- 📂 **Una sesión por trabajo** («Clientes 2026», «Disco viejo», «Papeles del auto»). Puedes saltar de uno a otro sin perder nada.
+- 📄 **¿Dudas? Empieza con Copiar.** Cuando estés seguro de cómo funciona, pasa a **Mover** para que la carpeta de origen se vaya vaciando.
+
+**Mientras ordenas**
+
+- 👁 **Clic, mira, suelta.** La vista previa es instantánea: no abras los archivos uno por uno con su programa.
+- 🧹 **De lo grueso a lo fino.** Con cientos de archivos, primero suéltalos en 3 o 4 carpetas grandes y después entra en cada una a repartir.
+- 🖱️ **Selecciona varios** con **Shift + clic** (un rango) o **Ctrl + clic** (sueltos) y arrástralos juntos.
+- ⌨️ **Con el teclado es más rápido:** escribe 3 o 4 letras del destino (`dni`, `luz`) y pulsa **Enter**. Pasa solo al siguiente archivo.
+- 📁 **Sin soltar el ratón:** mantén el archivo encima de una carpeta un momento y se abre sola para que bajes de nivel.
+- 🏷️ **Nombre o carpeta:** usa un *nombre* cuando el archivo debe llamarse de una forma fija (`DNI`, `Contrato`). Usa una *carpeta* cuando importa más dónde está que cómo se llama (fotos, recibos).
+
+**Para el día a día**
+
+- 📥 **Deja abierta la ventana Mini** en una esquina: lo que te llegue por correo o Telegram, suéltalo ahí y ordénalo al final del día.
+- 📋 **Ctrl+V** pega en Pendientes lo que copiaste en el Explorador, e incluso capturas de pantalla.
+- ↶ **Sin miedo:** cualquier error se arregla con **Ctrl+Z**. Nada se sobrescribe ni se borra.
+- ✅ **Limpiar llenas** quita de la vista lo que ya terminaste, para que solo veas lo que falta.
+
+---
+
 ## Preguntas frecuentes
 
 <details>
@@ -452,24 +480,4 @@ No. Las carpetas que escribes en Filter App se crean en el disco solo cuando les
 
 ---
 
-<details>
-<summary>Para desarrolladores</summary>
-
-WPF · .NET 10 · Windows 10/11
-
-```bat
-dotnet test tests\FilterApp.Core.Tests   :: pruebas
-publish.cmd                              :: exe local (requiere .NET 10 Desktop Runtime)
-release.cmd                              :: instalador + ZIP autocontenido para Releases
-```
-
-| Carpeta | Contenido |
-|---|---|
-| `src/FilterApp.Core` | Lógica: árbol de carpetas, tarjetas, copia/movimiento seguro, estado, sesiones |
-| `src/FilterApp` | Ventana WPF, arrastrar/pegar, Explorador, Mini |
-| `src/FilterApp/Preview` | Vista previa: PDFium, lector de Word propio, handlers de Office, WebView2, medios |
-| `installer/` | `FilterApp.iss` (Inno Setup), `Instalar.cmd` / `Desinstalar.cmd` |
-
-Las capturas de este README se hicieron con archivos de ejemplo inventados.
-
-</details>
+<p align="center"><sub>¿Quieres compilarla o colaborar? Mira <a href="docs/DESARROLLO.md">docs/DESARROLLO.md</a>. Las capturas de esta página se hicieron con archivos de ejemplo inventados.</sub></p>

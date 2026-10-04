@@ -29,6 +29,7 @@ public partial class PreviewPane : UserControl
     int _version;
     WebView2? _web;
     Task<bool>? _webReady;
+    bool _warming;
     bool _textDragReady, _docDragReady;
     bool _webShowing, _handlerShowing, _pdfShowing, _mediaShowing, _playing, _seeking;
 
@@ -499,26 +500,56 @@ public partial class PreviewPane : UserControl
         return true;
     }
 
-    // ---- Edge engine: only for what nothing else shows (SVG, WebM, Ogg) ----
+    // ---- Edge engine: web pages and what nothing else shows (SVG, WebM, Ogg) ----
 
     async Task<bool> ShowWebAsync(string path, Func<bool> current)
+    {
+        var clock = Stopwatch.StartNew();
+        StartWeb();
+        WebSlot.Visibility = Visibility.Visible;
+        if (!await _webReady!)
+        {
+            _webReady = null;   // tried again next time
+            WebSlot.Visibility = Visibility.Collapsed;
+            return false;
+        }
+        if (!current()) return true;
+        var core = _web!.CoreWebView2;
+        void Done(object? s, CoreWebView2NavigationCompletedEventArgs e)
+        {
+            core.NavigationCompleted -= Done;
+            System.Diagnostics.Trace.WriteLine($"preview Web {clock.ElapsedMilliseconds} ms {Path.GetFileName(path)}");
+        }
+        core.NavigationCompleted += Done;
+        core.Navigate(new Uri(path).AbsoluteUri);
+        _webShowing = true;
+        return true;
+    }
+
+    /// Starts the Edge engine ahead (about a second, once), so the first web page shows at once. Called when a
+    /// web page arrives in Pendientes; nothing is started while there are none.
+    public void WarmUpWeb()
+    {
+        if (_webReady is not null || _warming) return;
+        _warming = true;
+        // Once the app is idle: never slows the window down, and the engine cannot start before the app runs.
+        Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
+        {
+            _warming = false;
+            if (_webReady is not null) return;
+            StartWeb();
+            if (WebSlot.Visibility == Visibility.Collapsed) WebSlot.Visibility = Visibility.Hidden;   // it only starts once in the window
+        });
+    }
+
+    void StartWeb()
     {
         if (_web is null)
         {
             _web = new WebView2 { AllowExternalDrop = false, DefaultBackgroundColor = System.Drawing.Color.White };
             WebSlot.Content = _web;
         }
-        WebSlot.Visibility = Visibility.Visible;   // the control only starts once it is shown
         _webReady ??= InitWebAsync(_web);
-        if (!await _webReady)
-        {
-            WebSlot.Visibility = Visibility.Collapsed;
-            return false;
-        }
-        if (!current()) return true;
-        _web.CoreWebView2.Navigate(new Uri(path).AbsoluteUri);
-        _webShowing = true;
-        return true;
     }
 
     static async Task<bool> InitWebAsync(WebView2 web)
@@ -530,6 +561,14 @@ public partial class PreviewPane : UserControl
             var core = web.CoreWebView2;
             core.Settings.AreDevToolsEnabled = false;
             core.Settings.IsStatusBarEnabled = false;
+            // A preview never runs a page's code nor goes to the internet (fast, private): pages are drawn
+            // with their own local styles and pictures.
+            core.Settings.IsScriptEnabled = false;
+            core.Settings.AreDefaultScriptDialogsEnabled = false;
+            core.Settings.AreDefaultContextMenusEnabled = false;
+            core.AddWebResourceRequestedFilter("http://*", CoreWebView2WebResourceContext.All);
+            core.AddWebResourceRequestedFilter("https://*", CoreWebView2WebResourceContext.All);
+            core.WebResourceRequested += (_, e) => e.Response = env.CreateWebResourceResponse(null, 404, "Sin internet", "");
             // Only local files are shown; nothing opens pages in here or in new windows.
             core.NavigationStarting += (_, e) =>
             {
@@ -538,8 +577,9 @@ public partial class PreviewPane : UserControl
             core.NewWindowRequested += (_, e) => e.Handled = true;
             return true;
         }
-        catch (Exception)
+        catch (Exception e)
         {
+            System.Diagnostics.Trace.WriteLine($"preview web engine: {e.GetType().Name} {e.Message}");
             return false;   // no WebView2 runtime: the thumbnail is shown instead
         }
     }

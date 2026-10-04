@@ -26,7 +26,11 @@ public static class DocxDocument
 
     public abstract record Block;
     public sealed record Para(List<Piece> Pieces, Style Style, TextAlignment Align, double SpaceAfter, double Indent, string? Marker) : Block;
-    public sealed record Grid(List<List<List<Block>>> Rows) : Block;
+    public sealed record Grid(List<double> Columns, List<List<Cell>> Rows) : Block;
+    /// A table cell: its content, its four borders (null: none), background, and how many columns/rows it covers.
+    public sealed record Cell(List<Block> Blocks, Line? Top, Line? Left, Line? Bottom, Line? Right, Color? Fill,
+                              Thickness Padding, int Span = 1, int RowSpan = 1);
+    public sealed record Line(Color Color, double Width);
     public abstract record Piece;
     public sealed record Text(string Value, Style Style) : Piece;
     public sealed record Break : Piece;
@@ -61,6 +65,7 @@ public static class DocxDocument
     {
         readonly ZipArchive _zip;
         readonly Dictionary<string, (Style Run, TextAlignment? Align, int Heading)> _styles = [];
+        Dictionary<string, XElement> _rawStyles = [];
         readonly Dictionary<string, string> _images = [];      // relationship id → zip path
         readonly Dictionary<(string Num, int Level), string> _formats = [];
         readonly Dictionary<(string Num, int Level), int> _counters = [];
@@ -78,7 +83,7 @@ public static class DocxDocument
         {
             var styles = Load(_zip, "word/styles.xml")?.Root;
             if (styles is null) return;
-            var raw = styles.Elements(W + "style").Where(s => (string?)s.Attribute(W + "styleId") is not null)
+            var raw = _rawStyles = styles.Elements(W + "style").Where(s => (string?)s.Attribute(W + "styleId") is not null)
                             .ToDictionary(s => (string)s.Attribute(W + "styleId")!);
             (Style, TextAlignment?, int) Resolve(string id, int depth)
             {
@@ -135,8 +140,102 @@ public static class DocxDocument
             return blocks;
         }
 
-        Grid Table(XElement tbl) => new(tbl.Elements(W + "tr")
-            .Select(tr => tr.Elements(W + "tc").Select(tc => Blocks(tc)).ToList()).ToList());
+        Grid Table(XElement tbl)
+        {
+            var tblPr = tbl.Element(W + "tblPr");
+            var styleId = (string?)tblPr?.Element(W + "tblStyle")?.Attribute(W + "val");
+            var borders = tblPr?.Element(W + "tblBorders") ?? TableStyle(styleId, "tblBorders");
+            var margins = Margins(tblPr?.Element(W + "tblCellMar") ?? TableStyle(styleId, "tblCellMar"), new Thickness(7, 2, 7, 2));
+            var columns = tbl.Element(W + "tblGrid")?.Elements(W + "gridCol")
+                             .Select(c => double.TryParse((string?)c.Attribute(W + "w"), out var w) ? w / 15 : 0).ToList() ?? [];
+
+            var trs = tbl.Elements(W + "tr").ToList();
+            var rows = new List<List<Cell>>();
+            var above = new Dictionary<int, Cell>();   // grid column → the cell that starts there, for vertical merges
+            int width = Math.Max(columns.Count, trs.Count == 0 ? 0 : trs.Max(tr => tr.Elements(W + "tc").Sum(Span)));
+            for (int r = 0; r < trs.Count; r++)
+            {
+                var row = new List<Cell>();
+                int col = 0;
+                bool lastRow = r == trs.Count - 1;
+                foreach (var tc in trs[r].Elements(W + "tc"))
+                {
+                    var tcPr = tc.Element(W + "tcPr");
+                    int span = Span(tc);
+                    var merge = tcPr?.Element(W + "vMerge");
+                    if (merge is not null && (string?)merge.Attribute(W + "val") is null or "continue" && above.TryGetValue(col, out var top))
+                    {
+                        // Continues the cell above: that one grows instead.
+                        int i = rows.FindIndex(x => x.Contains(top));
+                        rows[i][rows[i].IndexOf(top)] = above[col] = top with
+                        {
+                            RowSpan = top.RowSpan + 1,
+                            Bottom = lastRow ? Edge(tcPr, "bottom", borders, "bottom") : top.Bottom,
+                        };
+                        col += span;
+                        continue;
+                    }
+                    var own = tcPr?.Element(W + "tcBorders");
+                    bool lastCol = col + span >= width;
+                    var cell = new Cell(Blocks(tc),
+                        Edge(own, "top", borders, r == 0 ? "top" : "insideH"),
+                        Edge(own, "left", borders, col == 0 ? "left" : "insideV", "start"),
+                        lastRow ? Edge(own, "bottom", borders, "bottom") : null,
+                        lastCol ? Edge(own, "right", borders, "right", "end") : null,
+                        Hex((string?)tcPr?.Element(W + "shd")?.Attribute(W + "fill")),
+                        Margins(tcPr?.Element(W + "tcMar"), margins), span);
+                    row.Add(cell);
+                    above[col] = cell;
+                    col += span;
+                }
+                rows.Add(row);
+            }
+            return new Grid(columns, rows);
+        }
+
+        static int Span(XElement tc) =>
+            int.TryParse((string?)tc.Element(W + "tcPr")?.Element(W + "gridSpan")?.Attribute(W + "val"), out var n) ? Math.Max(1, n) : 1;
+
+        /// A cell side: the cell's own border, else the table's (or its table style's). Null when there is none.
+        static Line? Edge(XElement? own, string side, XElement? table, string tableSide, string? alias = null)
+        {
+            var e = own?.Element(W + side) ?? (alias is null ? null : own?.Element(W + alias));
+            if (e is null)
+            {
+                e = table?.Element(W + tableSide);
+                if (e is null && tableSide is "left" or "right") e = table?.Element(W + (tableSide == "left" ? "start" : "end"));
+            }
+            var kind = (string?)e?.Attribute(W + "val");
+            if (e is null || kind is null or "nil" or "none") return null;
+            // Size in eighths of a point; never thinner than a pixel so it always shows.
+            double width = double.TryParse((string?)e.Attribute(W + "sz"), out var sz) ? sz / 6 : 0.67;
+            if (kind is "double" or "thickThinSmallGap" or "thinThickSmallGap") width *= 2;
+            return new Line(Hex((string?)e.Attribute(W + "color")) ?? Colors.Black, Math.Clamp(width, 1, 6));
+        }
+
+        static Thickness Margins(XElement? mar, Thickness fallback)
+        {
+            if (mar is null) return fallback;
+            double Side(string name, string alias, double other) =>
+                double.TryParse((string?)(mar.Element(W + name) ?? mar.Element(W + alias))?.Attribute(W + "w"), out var w) ? w / 15 : other;
+            return new Thickness(Side("left", "start", fallback.Left), Side("top", "top", fallback.Top),
+                                 Side("right", "end", fallback.Right), Side("bottom", "bottom", fallback.Bottom));
+        }
+
+        /// A setting of a table style (following the styles it is based on), such as its borders.
+        XElement? TableStyle(string? id, string name)
+        {
+            for (int depth = 0; id is not null && depth < 10 && _rawStyles.TryGetValue(id, out var s); depth++)
+            {
+                if (s.Element(W + "tblPr")?.Element(W + name) is { } found) return found;
+                id = (string?)s.Element(W + "basedOn")?.Attribute(W + "val");
+            }
+            return null;
+        }
+
+        static Color? Hex(string? hex) =>
+            hex is { Length: 6 } && int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out var rgb)
+                ? Color.FromRgb((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb) : null;
 
         Para Paragraph(XElement p)
         {
@@ -257,7 +356,7 @@ public static class DocxDocument
         {
             FontFamily = new FontFamily("Calibri, Segoe UI"),
             FontSize = 11 * 96 / 72.0,
-            PagePadding = new Thickness(56, 40, 56, 40),
+            PagePadding = new Thickness(28, 24, 28, 24),   // a narrow pane keeps room for tables
             Background = Brushes.White,
             ColumnWidth = double.PositiveInfinity,
             TextAlignment = TextAlignment.Left,
@@ -308,17 +407,32 @@ public static class DocxDocument
 
     static WpfTable ToTable(Grid g)
     {
-        var table = new WpfTable { CellSpacing = 0, BorderBrush = Brushes.Gray, BorderThickness = new Thickness(0.5), Margin = new Thickness(0, 4, 0, 10) };
-        int columns = g.Rows.Count == 0 ? 0 : g.Rows.Max(r => r.Count);
-        for (int i = 0; i < columns; i++) table.Columns.Add(new TableColumn());
+        var table = new WpfTable { CellSpacing = 0, Margin = new Thickness(0, 4, 0, 10) };
+        int columns = Math.Max(g.Columns.Count, g.Rows.Count == 0 ? 0 : g.Rows.Max(r => r.Sum(c => c.Span)));
+        // Word's proportions, stretched to the pane's width (star sizes kept small: large ones are not honoured).
+        double total = g.Columns.Where(w => w > 0).Sum();
+        for (int i = 0; i < columns; i++)
+            table.Columns.Add(new TableColumn
+            {
+                Width = new GridLength(i < g.Columns.Count && g.Columns[i] > 0 ? g.Columns[i] / total * columns : 1, GridUnitType.Star),
+            });
         var group = new TableRowGroup();
         foreach (var row in g.Rows)
         {
             var tableRow = new TableRow();
             foreach (var cell in row)
             {
-                var tableCell = new TableCell { BorderBrush = Brushes.Gray, BorderThickness = new Thickness(0.5), Padding = new Thickness(5, 3, 5, 3) };
-                foreach (var block in cell) tableCell.Blocks.Add(ToBlock(block));
+                var line = cell.Top ?? cell.Left ?? cell.Right ?? cell.Bottom;
+                var tableCell = new TableCell
+                {
+                    ColumnSpan = cell.Span,
+                    RowSpan = cell.RowSpan,
+                    Padding = cell.Padding,
+                    BorderBrush = line is null ? null : new SolidColorBrush(line.Color),
+                    BorderThickness = new Thickness(cell.Left?.Width ?? 0, cell.Top?.Width ?? 0, cell.Right?.Width ?? 0, cell.Bottom?.Width ?? 0),
+                    Background = cell.Fill is { } fill ? new SolidColorBrush(fill) : null,
+                };
+                foreach (var block in cell.Blocks) tableCell.Blocks.Add(ToBlock(block));
                 tableRow.Cells.Add(tableCell);
             }
             group.Rows.Add(tableRow);

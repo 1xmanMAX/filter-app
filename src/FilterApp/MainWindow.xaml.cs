@@ -53,7 +53,12 @@ public partial class MainWindow : Window
         _toastTimer.Tick += (_, _) => { _toastTimer.Stop(); Toast.Visibility = Visibility.Collapsed; };
         _springTimer.Tick += (_, _) => OnSpring();
         Activated += (_, _) => _board.RefreshDestination();
-        Loaded += (_, _) => SelectFirstPendingIfNone();
+        Loaded += (_, _) =>
+        {
+            SelectFirstPendingIfNone();
+            WarmUpPreviews(_board.Pending);
+        };
+        board.Pending.CollectionChanged += (_, e) => { if (e.NewItems is { } added) WarmUpPreviews(added.Cast<PendingItem>()); };
         Closing += (_, e) =>
         {
             if (IsBusy)
@@ -73,6 +78,12 @@ public partial class MainWindow : Window
     }
 
     bool IsBusy => _board.IsCopying || _batches > 0;
+
+    /// A web page waiting in Pendientes gets the Edge engine started, so it shows at once when clicked.
+    void WarmUpPreviews(IEnumerable<PendingItem> items)
+    {
+        if (IsLoaded && items.Any(p => PreviewText.Classify(p.SourcePath) == PreviewKind.Web)) Preview.WarmUpWeb();
+    }
 
     bool Save()
     {

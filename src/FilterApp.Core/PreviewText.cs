@@ -16,13 +16,12 @@ public static class PreviewText
     static readonly HashSet<string> Texts = Set(".txt", ".text", ".md", ".markdown", ".csv", ".tsv", ".log", ".json",
                                                 ".xml", ".yaml", ".yml", ".ini", ".cfg", ".conf", ".toml", ".sql",
                                                 ".cs", ".js", ".ts", ".py", ".java", ".c", ".cpp", ".h", ".css",
-                                                ".bat", ".cmd", ".ps1", ".sh", ".srt", ".vtt", ".tex", ".bib", ".htm", ".html");
+                                                ".bat", ".cmd", ".ps1", ".sh", ".srt", ".vtt", ".tex", ".bib");
     /// Played by Windows itself (Media Foundation).
     static readonly HashSet<string> Media = Set(".mp4", ".m4v", ".mov", ".wmv", ".avi", ".mkv", ".3gp", ".mp3", ".m4a",
                                                 ".wav", ".wma", ".aac", ".flac");
-    /// Only the Edge engine shows these. Web pages are shown as text on purpose: rendering them would run
-    /// their scripts.
-    static readonly HashSet<string> Web = Set(".svg", ".webm", ".ogg", ".oga", ".opus");
+    /// Shown by the Edge engine, with scripts and internet turned off (a preview never runs a page's code).
+    static readonly HashSet<string> Web = Set(".htm", ".html", ".xhtml", ".mht", ".mhtml", ".svg", ".webm", ".ogg", ".oga", ".opus");
 
     static HashSet<string> Set(params string[] items) => new(items, StringComparer.OrdinalIgnoreCase);
 

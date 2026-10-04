@@ -82,10 +82,12 @@ Haz clic en un pendiente y míralo al instante, con su formato original y sin ab
 | Tipo | Cómo se ve |
 |---|---|
 | PDF | Con PDFium (el motor de Chrome): página a página, en milisegundos aunque tenga cientos de páginas |
-| Word, Excel, PowerPoint, Outlook… | Con la vista previa del Explorador (si tienes Office). En Word, el texto aparece al instante mientras carga el formato |
+| Word | Al instante con su formato (títulos, listas, tablas con sus marcos, imágenes), aunque no tengas Office. Si Word puede, después pasa a su vista exacta |
+| Excel, PowerPoint, Outlook… | Con la vista previa del Explorador (si tienes Office) |
+| Páginas web (HTML, MHT) | Con el motor de Edge, con su diseño. Sin ejecutar su código ni conectarse a internet: seguro y rápido |
 | Video y audio (MP4, MOV, MP3, WAV…) | Con el reproductor de Windows |
 | Fotos (JPG, PNG, WEBP, HEIC…) | Bien orientadas. **Rueda** = zoom, **doble clic** = tamaño real |
-| TXT, CSV, JSON, código, HTML | Como texto |
+| TXT, CSV, JSON, código | Como texto |
 | Lo demás | Su miniatura + botón **Abrir** |
 
 **Para moverte:** mantén pulsado el **botón central** (o el izquierdo en PDF e imágenes) y arrastra. **Ctrl + rueda** hace zoom en el PDF.
